@@ -784,6 +784,11 @@ def generate_simulation_report(
   # Fit the microvolt scale; skip it when the calibration level was not simulated.
   calibration_line = format_calibration_line(click_levels_db, abr_results)
 
+  # Both fiber retention levels are reported as a single scaling criterion.
+  syn_high_scaled = _combine_checks(
+    validation.synaptopathy_high_scaled_50, validation.synaptopathy_high_scaled_25
+  )
+
   # Build markdown report sections.
   report_lines = [
     "# CARFAC Electrophysiology Cohort Simulation Report",
@@ -825,7 +830,7 @@ def generate_simulation_report(
     "",
     f"- **Synaptopathy Low-Level Preservation (30-40 dB SPL)**: {format_check_status(validation.synaptopathy_low_preserved)}",
     "  - Wave-I onset response is maintained close to control levels, preserving low-level hearing threshold.",
-    f"- **Synaptopathy Suprathreshold Scaling (80 dB SPL)**: {format_check_status(_combine_checks(validation.synaptopathy_high_scaled_50, validation.synaptopathy_high_scaled_25))}",
+    f"- **Synaptopathy Suprathreshold Scaling (80 dB SPL)**: {format_check_status(syn_high_scaled)}",
     "  - 50% fiber retention scales Wave-I amplitude by ~50% (actual ~52.6%).",
     "  - 25% fiber retention scales Wave-I amplitude by ~75% (actual ~27.0% remaining).",
     f"- **EFR Suprathreshold Attenuation**: {format_check_status(validation.efr_suprathreshold_drop)}",
