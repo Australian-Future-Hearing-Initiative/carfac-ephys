@@ -16,12 +16,27 @@ from carfac_ephys.electrophysiology import (
   extract_efr_amplitude,
   extract_wave_i_amplitude,
 )
+from carfac_ephys.experiment import (
+  Cohort,
+  CohortCondition,
+  DEFAULT_CLICK_LEVELS_DB,
+  DEFAULT_COHORT_CONDITIONS,
+  DEFAULT_EFR_LEVELS_DB,
+  get_default_cohort,
+  simulate_abr_level_series,
+  simulate_efr_level_series,
+)
 from carfac_ephys.stimuli import generate_click, generate_sam_tone
 
 __version__ = "0.1.0"
 
 __all__ = [
   "CarfacModel",
+  "Cohort",
+  "CohortCondition",
+  "DEFAULT_CLICK_LEVELS_DB",
+  "DEFAULT_COHORT_CONDITIONS",
+  "DEFAULT_EFR_LEVELS_DB",
   "DEFAULT_SAMPLE_RATE",
   "DYNAMIC_RANGE_DB",
   "FiberRetention",
@@ -33,4 +48,7 @@ __all__ = [
   "extract_wave_i_amplitude",
   "generate_click",
   "generate_sam_tone",
+  "get_default_cohort",
+  "simulate_abr_level_series",
+  "simulate_efr_level_series",
 ]
