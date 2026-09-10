@@ -251,8 +251,10 @@ def simulate_efr_level_series(
   efr_levels_db: Sequence[float] = DEFAULT_EFR_LEVELS_DB,
   fc_hz: float = 2000.0,
   fm_hz: float = 100.0,
+  depth: float = 1.0,
   sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
   duration_s: float = 0.2,
+  ramp_s: float = 0.01,
   steady_state_start_s: float = 0.05,
   single_sided: bool = False,
 ) -> dict[str, list[float]]:
@@ -263,8 +265,10 @@ def simulate_efr_level_series(
     efr_levels_db: Sequence of SAM tone carrier sound levels in dB SPL.
     fc_hz: Carrier frequency in Hz.
     fm_hz: Modulation frequency in Hz.
+    depth: Modulation depth of the SAM tone.
     sample_rate: Sampling rate in Hz.
     duration_s: SAM tone duration in seconds.
+    ramp_s: Duration of the stimulus onset and offset ramps in seconds.
     steady_state_start_s: Steady-state window start time in seconds.
     single_sided: Whether to return single-sided Fourier magnitude.
 
@@ -280,6 +284,10 @@ def simulate_efr_level_series(
     raise ValueError("fm_hz must be below Nyquist frequency.")
   if not efr_levels_db:
     raise ValueError("efr_levels_db sequence cannot be empty.")
+
+  # End the analysis window before the offset ramp, whose envelope would
+  # otherwise leak into the modulation frequency bin.
+  steady_state_stop_s = duration_s - ramp_s
 
   # Resolve cohort specifications.
   resolved_cohort = _resolve_cohort(cohort)
@@ -300,9 +308,11 @@ def simulate_efr_level_series(
       waveform = stimuli.generate_sam_tone(
         fc_hz=fc_hz,
         fm_hz=fm_hz,
+        depth=depth,
         duration_s=duration_s,
         sample_rate=sample_rate,
         target_db_spl=float(level),
+        ramp_s=ramp_s,
       )
       naps = model.run(waveform)
       pop_rate = electrophysiology.compute_population_rate(naps)
@@ -311,6 +321,7 @@ def simulate_efr_level_series(
         sample_rate=sample_rate,
         fm_hz=fm_hz,
         steady_state_start_s=steady_state_start_s,
+        steady_state_stop_s=steady_state_stop_s,
         single_sided=single_sided,
       )
       mags.append(float(mag))
@@ -559,28 +570,29 @@ def format_markdown_table(
 
 
 class BiologicalValidation(NamedTuple):
-  """Validation status of biological signature reproduction against animal data."""
+  """Validation status of biological signature reproduction against animal data.
 
-  synaptopathy_low_preserved: bool
-  synaptopathy_high_scaled_50: bool
-  synaptopathy_high_scaled_25: bool
-  efr_suprathreshold_drop: bool
-  ohc_threshold_shifted: bool
-  ohc_compression_lost: bool
-  mixed_loss_dual_deficit: bool
+  Each criterion is True when satisfied, False when violated, and None when the
+  sound levels or cohorts it needs were not simulated.
+  """
+
+  synaptopathy_low_preserved: bool | None
+  synaptopathy_high_scaled_50: bool | None
+  synaptopathy_high_scaled_25: bool | None
+  efr_suprathreshold_drop: bool | None
+  ohc_threshold_shifted: bool | None
+  ohc_compression_lost: bool | None
+  mixed_loss_dual_deficit: bool | None
 
   @property
   def all_passed(self) -> bool:
-    """Returns whether all biological signature criteria were satisfied."""
-    return (
-      self.synaptopathy_low_preserved
-      and self.synaptopathy_high_scaled_50
-      and self.synaptopathy_high_scaled_25
-      and self.efr_suprathreshold_drop
-      and self.ohc_threshold_shifted
-      and self.ohc_compression_lost
-      and self.mixed_loss_dual_deficit
-    )
+    """Returns whether every evaluated criterion was satisfied, ignoring skipped ones."""
+    return all(flag for flag in self if flag is not None)
+
+  @property
+  def any_skipped(self) -> bool:
+    """Returns whether any criterion lacked the data needed to evaluate it."""
+    return any(flag is None for flag in self)
 
 
 def _get_level_value(
@@ -595,6 +607,43 @@ def _get_level_value(
     return None
   values = results[condition]
   return values[idx] if 0 <= idx < len(values) else None
+
+
+def _ratio_within(
+  numerator: float | None,
+  denominator: float | None,
+  low: float,
+  high: float,
+) -> bool | None:
+  """Checks a response ratio against bounds, or None when it cannot be computed."""
+  if numerator is None or denominator is None or denominator <= 0.0:
+    return None
+  return low <= (numerator / denominator) <= high
+
+
+def format_check_status(flag: bool | None) -> str:
+  """Renders a validation criterion outcome, where None means it was not evaluated."""
+  if flag is None:
+    return "SKIPPED"
+  return "PASSED" if flag else "FAILED"
+
+
+def _combine_checks(*flags: bool | None) -> bool | None:
+  """Reduces criteria to a single outcome: failure dominates, then skipped."""
+  if any(flag is False for flag in flags):
+    return False
+  if any(flag is None for flag in flags):
+    return None
+  return True
+
+
+def format_overall_verdict(validation: BiologicalValidation) -> str:
+  """Renders the overall verdict, flagging criteria that could not be evaluated."""
+  if not validation.all_passed:
+    return "SOME CHECKS FAILED"
+  if validation.any_skipped:
+    return "ALL EVALUATED CHECKS PASSED, SOME CHECKS SKIPPED"
+  return "ALL CHECKS PASSED"
 
 
 def validate_biological_signatures(
@@ -621,76 +670,54 @@ def validate_biological_signatures(
   efr_idx = {float(lvl): i for i, lvl in enumerate(efr_levels_db)}
 
   # 1. Synaptopathy preserves low-level responses (30-40 dB SPL).
-  low_lvl = 40.0 if 40.0 in click_idx else (30.0 if 30.0 in click_idx else None)
-  ctrl_low = _get_level_value(abr_results, click_idx, "Control", low_lvl) if low_lvl else None
-  syn50_low = (
-    _get_level_value(abr_results, click_idx, "Synaptopathy-50", low_lvl) if low_lvl else None
-  )
-  syn_low_ok = ctrl_low is not None and syn50_low is not None and syn50_low > 0.3 * ctrl_low
+  low_lvl = 40.0 if 40.0 in click_idx else 30.0
+  ctrl_low = _get_level_value(abr_results, click_idx, "Control", low_lvl)
+  syn50_low = _get_level_value(abr_results, click_idx, "Synaptopathy-50", low_lvl)
+  syn_low_ok = None
+  if ctrl_low is not None and syn50_low is not None:
+    syn_low_ok = syn50_low > 0.3 * ctrl_low
 
   # 2. Synaptopathy scales high-level Wave-I amplitude proportionally at 80 dB SPL.
   ctrl_80 = _get_level_value(abr_results, click_idx, "Control", 80.0)
   syn50_80 = _get_level_value(abr_results, click_idx, "Synaptopathy-50", 80.0)
   syn25_80 = _get_level_value(abr_results, click_idx, "Synaptopathy-25", 80.0)
-  syn_high_50_ok = (
-    ctrl_80 is not None
-    and syn50_80 is not None
-    and ctrl_80 > 0
-    and 0.40 <= (syn50_80 / ctrl_80) <= 0.65
-  )
-  syn_high_25_ok = (
-    ctrl_80 is not None
-    and syn25_80 is not None
-    and ctrl_80 > 0
-    and 0.15 <= (syn25_80 / ctrl_80) <= 0.35
-  )
+  syn_high_50_ok = _ratio_within(syn50_80, ctrl_80, 0.40, 0.65)
+  syn_high_25_ok = _ratio_within(syn25_80, ctrl_80, 0.15, 0.35)
 
   # 3. Suprathreshold EFR drops proportionally for synaptopathy cohorts at 80 dB SPL.
   ctrl_efr = _get_level_value(efr_results, efr_idx, "Control", 80.0)
   syn50_efr = _get_level_value(efr_results, efr_idx, "Synaptopathy-50", 80.0)
-  efr_drop_ok = (
-    ctrl_efr is not None
-    and syn50_efr is not None
-    and ctrl_efr > 0
-    and 0.35 <= (syn50_efr / ctrl_efr) <= 0.65
-  )
+  efr_drop_ok = _ratio_within(syn50_efr, ctrl_efr, 0.35, 0.65)
 
   # 4. OHC Loss elevates threshold (negligible response at 30-50 dB SPL).
-  ohc_threshold_ok = "Control" in abr_results and "OHC-Loss" in abr_results
-  if ohc_threshold_ok:
-    for lvl in (30.0, 40.0, 50.0):
-      if lvl in click_idx:
-        c_val = _get_level_value(abr_results, click_idx, "Control", lvl)
-        o_val = _get_level_value(abr_results, click_idx, "OHC-Loss", lvl)
-        if c_val is None or o_val is None or (o_val >= 0.10 * c_val and o_val >= 0.01):
-          ohc_threshold_ok = False
-          break
+  ohc_threshold_ok = None
+  for lvl in (30.0, 40.0, 50.0):
+    c_val = _get_level_value(abr_results, click_idx, "Control", lvl)
+    o_val = _get_level_value(abr_results, click_idx, "OHC-Loss", lvl)
+    if c_val is None or o_val is None:
+      continue
+    ohc_threshold_ok = o_val < 0.10 * c_val or o_val < 0.01
+    if not ohc_threshold_ok:
+      break
 
   # 5. OHC Loss displays loss of compressive gain (steep response emergence at 60+ dB SPL).
   ohc_60 = _get_level_value(efr_results, efr_idx, "OHC-Loss", 60.0)
   ohc_80 = _get_level_value(efr_results, efr_idx, "OHC-Loss", 80.0)
   ctrl_80_efr = _get_level_value(efr_results, efr_idx, "Control", 80.0)
-  ctrl_ref = ctrl_80_efr if ctrl_80_efr is not None else 1.0
-  ohc_comp_ok = (
-    ohc_60 is not None
-    and ohc_80 is not None
-    and (ohc_80 > 8.0 * ohc_60)
-    and (ohc_80 > 0.6 * ctrl_ref)
-  )
+  ohc_comp_ok = None
+  if ohc_60 is not None and ohc_80 is not None and ctrl_80_efr is not None:
+    ohc_comp_ok = ohc_80 > 8.0 * ohc_60 and ohc_80 > 0.6 * ctrl_80_efr
 
   # 6. Mixed loss exhibits combined threshold elevation and attenuated maximum response.
   mixed_abr = _get_level_value(abr_results, click_idx, "Mixed-Loss", 80.0)
   ohc_abr = _get_level_value(abr_results, click_idx, "OHC-Loss", 80.0)
   mixed_efr = _get_level_value(efr_results, efr_idx, "Mixed-Loss", 80.0)
   ohc_efr = _get_level_value(efr_results, efr_idx, "OHC-Loss", 80.0)
-  mixed_ok = (
-    mixed_abr is not None
-    and ohc_abr is not None
-    and mixed_efr is not None
-    and ohc_efr is not None
-    and (mixed_abr < 0.7 * ohc_abr)
-    and (mixed_efr < 0.7 * ohc_efr)
-  )
+  mixed_ok = None
+  if (
+    mixed_abr is not None and ohc_abr is not None and mixed_efr is not None and ohc_efr is not None
+  ):
+    mixed_ok = mixed_abr < 0.7 * ohc_abr and mixed_efr < 0.7 * ohc_efr
 
   return BiologicalValidation(
     synaptopathy_low_preserved=syn_low_ok,
@@ -796,21 +823,21 @@ def generate_simulation_report(
     "",
     "Comparison against animal literature (Bharadwaj et al. 2022, Mehraei et al. 2016, Ruggero et al. 1997):",
     "",
-    f"- **Synaptopathy Low-Level Preservation (30-40 dB SPL)**: {'PASSED' if validation.synaptopathy_low_preserved else 'FAILED'}",
+    f"- **Synaptopathy Low-Level Preservation (30-40 dB SPL)**: {format_check_status(validation.synaptopathy_low_preserved)}",
     "  - Wave-I onset response is maintained close to control levels, preserving low-level hearing threshold.",
-    f"- **Synaptopathy Suprathreshold Scaling (80 dB SPL)**: {'PASSED' if validation.synaptopathy_high_scaled_50 and validation.synaptopathy_high_scaled_25 else 'FAILED'}",
+    f"- **Synaptopathy Suprathreshold Scaling (80 dB SPL)**: {format_check_status(_combine_checks(validation.synaptopathy_high_scaled_50, validation.synaptopathy_high_scaled_25))}",
     "  - 50% fiber retention scales Wave-I amplitude by ~50% (actual ~52.6%).",
     "  - 25% fiber retention scales Wave-I amplitude by ~75% (actual ~27.0% remaining).",
-    f"- **EFR Suprathreshold Attenuation**: {'PASSED' if validation.efr_suprathreshold_drop else 'FAILED'}",
+    f"- **EFR Suprathreshold Attenuation**: {format_check_status(validation.efr_suprathreshold_drop)}",
     "  - Suprathreshold EFR spectral magnitude drops proportionally with fiber deafferentation.",
-    f"- **OHC Loss Threshold Shift (30-50 dB SPL)**: {'PASSED' if validation.ohc_threshold_shifted else 'FAILED'}",
+    f"- **OHC Loss Threshold Shift (30-50 dB SPL)**: {format_check_status(validation.ohc_threshold_shifted)}",
     "  - Threshold elevated by ~30 dB; negligible response below 60 dB SPL (<5% of Control).",
-    f"- **OHC Loss of Compression**: {'PASSED' if validation.ohc_compression_lost else 'FAILED'}",
+    f"- **OHC Loss of Compression**: {format_check_status(validation.ohc_compression_lost)}",
     "  - Response emerges steeply at 60+ dB SPL with loss of healthy compressive gain.",
-    f"- **Mixed Loss Dual Deficit**: {'PASSED' if validation.mixed_loss_dual_deficit else 'FAILED'}",
+    f"- **Mixed Loss Dual Deficit**: {format_check_status(validation.mixed_loss_dual_deficit)}",
     "  - Exhibits elevated threshold from OHC damage combined with reduced suprathreshold ceiling from synaptopathy.",
     "",
-    f"**Overall Biological Verification**: {'ALL CHECKS PASSED' if validation.all_passed else 'SOME CHECKS FAILED'}",
+    f"**Overall Biological Verification**: {format_overall_verdict(validation)}",
     "",
     "## 5. Diagnostic Figures",
     "",

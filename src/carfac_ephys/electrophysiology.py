@@ -138,8 +138,8 @@ def extract_wave_i_amplitude(
     return 0.0
 
   # Compute onset and window sample indices.
-  onset_idx = int(round(stimulus_onset_s * sample_rate))
-  window_samples = int(round(window_s * sample_rate))
+  onset_idx = round(stimulus_onset_s * sample_rate)
+  window_samples = round(window_s * sample_rate)
   end_idx = onset_idx + window_samples
 
   # Signal ended before or at stimulus onset.
@@ -170,6 +170,7 @@ def extract_efr_amplitude(
   sample_rate: int,
   fm_hz: float,
   steady_state_start_s: float = 0.05,
+  steady_state_stop_s: float | None = None,
   single_sided: bool = False,
 ) -> float:
   """Extracts Envelope Following Response (EFR) spectral magnitude.
@@ -182,6 +183,9 @@ def extract_efr_amplitude(
     sample_rate: Sampling rate in Hz.
     fm_hz: Modulation frequency in Hz.
     steady_state_start_s: Start time of steady-state window in seconds.
+    steady_state_stop_s: End time of steady-state window in seconds; the whole
+      remaining signal is used when None. Use it to exclude the stimulus offset
+      ramp, whose envelope leaks into the modulation frequency bin.
     single_sided: If True, returns single-sided spectral amplitude (2 * |X| / N).
       If False, returns normalized DFT magnitude (|X| / N).
 
@@ -201,6 +205,8 @@ def extract_efr_amplitude(
     raise ValueError("fm_hz must be below Nyquist frequency.")
   if steady_state_start_s < 0.0:
     raise ValueError("steady_state_start_s must be non-negative.")
+  if steady_state_stop_s is not None and steady_state_stop_s <= steady_state_start_s:
+    raise ValueError("steady_state_stop_s must exceed steady_state_start_s.")
 
   # Convert input rate to 1D float64 array.
   rate = np.asarray(population_rate, dtype=np.float64)
@@ -213,12 +219,15 @@ def extract_efr_amplitude(
   if not np.isfinite(rate).all():
     raise ValueError("population_rate contains NaN or Inf values.")
 
-  # Slicing steady state response.
-  start_idx = int(round(steady_state_start_s * sample_rate))
+  # Slicing steady state response, clamping the window to the available samples.
+  start_idx = round(steady_state_start_s * sample_rate)
   if start_idx >= rate.size:
     return 0.0
+  stop_idx = rate.size
+  if steady_state_stop_s is not None:
+    stop_idx = min(stop_idx, round(steady_state_stop_s * sample_rate))
 
-  steady_signal = rate[start_idx:]
+  steady_signal = rate[start_idx:stop_idx]
   n_samples = steady_signal.size
   if n_samples == 0:
     return 0.0

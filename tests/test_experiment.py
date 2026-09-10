@@ -166,6 +166,15 @@ class TestSimulateLevelSeries:
     # Verify synaptopathy reduces suprathreshold EFR.
     assert results["Synaptopathy-50"][1] < results["Control"][1]
 
+  def test_zero_modulation_depth_has_no_efr(self):
+    # An unmodulated carrier must not produce an envelope response; the offset
+    # ramp used to leak into the analysis window and create a spurious floor.
+    mini_cohort = Cohort({"Control": (1.0, 1.0)})
+    unmodulated = simulate_efr_level_series(cohort=mini_cohort, efr_levels_db=[80.0], depth=0.0)
+    modulated = simulate_efr_level_series(cohort=mini_cohort, efr_levels_db=[80.0], depth=1.0)
+
+    assert unmodulated["Control"][0] < 0.01 * modulated["Control"][0]
+
   def test_simulate_efr_parameter_validation(self):
     with pytest.raises(ValueError, match="sample_rate"):
       simulate_efr_level_series(sample_rate=0)
@@ -274,6 +283,12 @@ class TestCli:
     assert (tmp_path / "efr_growth.png").stat().st_size > 0
     assert (tmp_path / "simulation_report.md").stat().st_size > 0
 
+    # The quick sweep omits the 30-50 dB SPL levels, so the threshold criteria
+    # have no data and must not be reported as failures.
+    report = (tmp_path / "simulation_report.md").read_text(encoding="utf-8")
+    assert "OHC Loss Threshold Shift (30-50 dB SPL)**: SKIPPED" in report
+    assert "FAILED" not in report
+
 
 class TestMarkdownTableFormatter:
   """Tests for format_markdown_table."""
@@ -344,6 +359,44 @@ class TestBiologicalValidation:
     val = validate_biological_signatures(click_levels, abr_results, efr_levels, efr_results)
     assert val.synaptopathy_low_preserved is False
     assert val.all_passed is False
+
+  def test_missing_levels_are_skipped_not_failed(self):
+    # Quick sweep omits the 30-50 dB SPL levels the threshold criteria need.
+    click_levels = [60.0, 80.0]
+    abr_results = {
+      "Control": [10.7559, 67.5298],
+      "Synaptopathy-50": [6.1125, 35.5266],
+      "Synaptopathy-25": [3.2536, 18.2008],
+      "OHC-Loss": [0.0256, 0.8301],
+      "Mixed-Loss": [0.0128, 0.4261],
+    }
+    efr_levels = [60.0, 80.0]
+    efr_results = {
+      "Control": [2.4846, 5.8168],
+      "Synaptopathy-50": [1.4827, 2.8883],
+      "OHC-Loss": [0.3421, 4.7608],
+      "Mixed-Loss": [0.2073, 2.5421],
+    }
+
+    val = validate_biological_signatures(click_levels, abr_results, efr_levels, efr_results)
+
+    assert val.synaptopathy_low_preserved is None
+    assert val.ohc_threshold_shifted is None
+    assert val.synaptopathy_high_scaled_50 is True
+    assert val.any_skipped is True
+    assert val.all_passed is True
+
+  def test_report_marks_skipped_checks(self):
+    content = generate_simulation_report(
+      click_levels_db=[60.0, 80.0],
+      abr_results={"Control": [10.0, 67.5298], "Synaptopathy-50": [5.0, 35.5]},
+      efr_levels_db=[60.0, 80.0],
+      efr_results={"Control": [2.5, 5.8], "Synaptopathy-50": [1.5, 2.9]},
+    )
+
+    assert "SKIPPED" in content
+    assert "ALL CHECKS PASSED" not in content
+    assert "SOME CHECKS SKIPPED" in content
 
 
 class TestGenerateSimulationReport:

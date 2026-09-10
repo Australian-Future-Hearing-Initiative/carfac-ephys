@@ -219,8 +219,45 @@ class TestExtractEFRAmplitude:
       == 0.0
     )
 
+  def test_stop_time_excludes_trailing_samples(self):
+    fs = 32000
+    fm_hz = 100.0
+    t = np.arange(int(0.2 * fs)) / fs
+    pop_rate = 5.0 + 2.0 * np.cos(2.0 * np.pi * fm_hz * t)
+
+    # Corrupt the final 10 ms the way an offset ramp would.
+    corrupted = pop_rate.copy()
+    corrupted[int(0.19 * fs) :] = 0.0
+
+    efr_windowed = extract_efr_amplitude(
+      corrupted, sample_rate=fs, fm_hz=fm_hz, steady_state_start_s=0.05, steady_state_stop_s=0.19
+    )
+    efr_clean = extract_efr_amplitude(
+      pop_rate, sample_rate=fs, fm_hz=fm_hz, steady_state_start_s=0.05, steady_state_stop_s=0.19
+    )
+    assert np.isclose(efr_windowed, efr_clean, rtol=1e-9)
+
+  def test_stop_time_beyond_signal_is_clamped(self):
+    fs = 32000
+    t = np.arange(int(0.2 * fs)) / fs
+    pop_rate = 5.0 + 2.0 * np.cos(2.0 * np.pi * 100.0 * t)
+
+    efr_clamped = extract_efr_amplitude(
+      pop_rate, sample_rate=fs, fm_hz=100.0, steady_state_stop_s=10.0
+    )
+    efr_full = extract_efr_amplitude(pop_rate, sample_rate=fs, fm_hz=100.0)
+    assert np.isclose(efr_clamped, efr_full, rtol=1e-9)
+
   def test_invalid_parameters(self):
     valid_rate = np.ones(1000)
+    with pytest.raises(ValueError, match="steady_state_stop_s"):
+      extract_efr_amplitude(
+        valid_rate,
+        sample_rate=32000,
+        fm_hz=100.0,
+        steady_state_start_s=0.02,
+        steady_state_stop_s=0.02,
+      )
     with pytest.raises(ValueError, match="sample_rate"):
       extract_efr_amplitude(valid_rate, sample_rate=0, fm_hz=100.0)
     with pytest.raises(ValueError, match="fm_hz must be positive"):
