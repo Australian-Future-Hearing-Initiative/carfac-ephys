@@ -546,6 +546,20 @@ class BiologicalValidation(NamedTuple):
     )
 
 
+def _get_level_value(
+  results: Mapping[str, Sequence[float]],
+  level_indices: Mapping[float, int],
+  condition: str,
+  level_db: float,
+) -> float | None:
+  """Safely retrieves simulation response amplitude for condition and level."""
+  idx = level_indices.get(float(level_db))
+  if idx is None or condition not in results:
+    return None
+  values = results[condition]
+  return values[idx] if 0 <= idx < len(values) else None
+
+
 def validate_biological_signatures(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
@@ -565,111 +579,81 @@ def validate_biological_signatures(
   Returns:
     BiologicalValidation record containing pass/fail flags for each criterion.
   """
-  # Helper for indexing sound levels.
+  # Index maps for sound levels.
   click_idx = {float(lvl): i for i, lvl in enumerate(click_levels_db)}
   efr_idx = {float(lvl): i for i, lvl in enumerate(efr_levels_db)}
 
   # 1. Synaptopathy preserves low-level responses (30-40 dB SPL).
   low_lvl = 40.0 if 40.0 in click_idx else (30.0 if 30.0 in click_idx else None)
-  if low_lvl is not None and "Control" in abr_results and "Synaptopathy-50" in abr_results:
-    idx = click_idx[low_lvl]
-    if len(abr_results["Control"]) > idx and len(abr_results["Synaptopathy-50"]) > idx:
-      ctrl_low = abr_results["Control"][idx]
-      syn50_low = abr_results["Synaptopathy-50"][idx]
-      syn_low_ok = syn50_low > 0.3 * ctrl_low
-    else:
-      syn_low_ok = False
-  else:
-    syn_low_ok = False
+  ctrl_low = _get_level_value(abr_results, click_idx, "Control", low_lvl) if low_lvl else None
+  syn50_low = (
+    _get_level_value(abr_results, click_idx, "Synaptopathy-50", low_lvl) if low_lvl else None
+  )
+  syn_low_ok = ctrl_low is not None and syn50_low is not None and syn50_low > 0.3 * ctrl_low
 
   # 2. Synaptopathy scales high-level Wave-I amplitude proportionally at 80 dB SPL.
-  if 80.0 in click_idx and "Control" in abr_results:
-    idx = click_idx[80.0]
-    ctrl_80 = abr_results["Control"][idx] if len(abr_results["Control"]) > idx else 0.0
-    has_syn50 = "Synaptopathy-50" in abr_results and len(abr_results["Synaptopathy-50"]) > idx
-    has_syn25 = "Synaptopathy-25" in abr_results and len(abr_results["Synaptopathy-25"]) > idx
-    ratio_50 = (abr_results["Synaptopathy-50"][idx] / ctrl_80) if has_syn50 and ctrl_80 > 0 else 0.0
-    ratio_25 = (abr_results["Synaptopathy-25"][idx] / ctrl_80) if has_syn25 and ctrl_80 > 0 else 0.0
-    syn_high_50_ok = 0.40 <= ratio_50 <= 0.65 if has_syn50 else False
-    syn_high_25_ok = 0.15 <= ratio_25 <= 0.35 if has_syn25 else False
-  else:
-    syn_high_50_ok = False
-    syn_high_25_ok = False
+  ctrl_80 = _get_level_value(abr_results, click_idx, "Control", 80.0)
+  syn50_80 = _get_level_value(abr_results, click_idx, "Synaptopathy-50", 80.0)
+  syn25_80 = _get_level_value(abr_results, click_idx, "Synaptopathy-25", 80.0)
+  syn_high_50_ok = (
+    ctrl_80 is not None
+    and syn50_80 is not None
+    and ctrl_80 > 0
+    and 0.40 <= (syn50_80 / ctrl_80) <= 0.65
+  )
+  syn_high_25_ok = (
+    ctrl_80 is not None
+    and syn25_80 is not None
+    and ctrl_80 > 0
+    and 0.15 <= (syn25_80 / ctrl_80) <= 0.35
+  )
 
   # 3. Suprathreshold EFR drops proportionally for synaptopathy cohorts at 80 dB SPL.
-  if 80.0 in efr_idx and "Control" in efr_results and "Synaptopathy-50" in efr_results:
-    idx = efr_idx[80.0]
-    if len(efr_results["Control"]) > idx and len(efr_results["Synaptopathy-50"]) > idx:
-      ctrl_efr = efr_results["Control"][idx]
-      syn50_efr = efr_results["Synaptopathy-50"][idx]
-      efr_drop_ok = 0.35 <= (syn50_efr / ctrl_efr) <= 0.65 if ctrl_efr > 0 else False
-    else:
-      efr_drop_ok = False
-  else:
-    efr_drop_ok = False
+  ctrl_efr = _get_level_value(efr_results, efr_idx, "Control", 80.0)
+  syn50_efr = _get_level_value(efr_results, efr_idx, "Synaptopathy-50", 80.0)
+  efr_drop_ok = (
+    ctrl_efr is not None
+    and syn50_efr is not None
+    and ctrl_efr > 0
+    and 0.35 <= (syn50_efr / ctrl_efr) <= 0.65
+  )
 
   # 4. OHC Loss elevates threshold (negligible response at 30-50 dB SPL).
-  if "Control" in abr_results and "OHC-Loss" in abr_results:
-    ohc_threshold_ok = True
+  ohc_threshold_ok = "Control" in abr_results and "OHC-Loss" in abr_results
+  if ohc_threshold_ok:
     for lvl in (30.0, 40.0, 50.0):
       if lvl in click_idx:
-        idx = click_idx[lvl]
-        if len(abr_results["Control"]) > idx and len(abr_results["OHC-Loss"]) > idx:
-          c_val = abr_results["Control"][idx]
-          o_val = abr_results["OHC-Loss"][idx]
-          if o_val >= 0.10 * c_val and o_val >= 0.01:
-            ohc_threshold_ok = False
-            break
-        else:
+        c_val = _get_level_value(abr_results, click_idx, "Control", lvl)
+        o_val = _get_level_value(abr_results, click_idx, "OHC-Loss", lvl)
+        if c_val is None or o_val is None or (o_val >= 0.10 * c_val and o_val >= 0.01):
           ohc_threshold_ok = False
           break
-  else:
-    ohc_threshold_ok = False
 
   # 5. OHC Loss displays loss of compressive gain (steep response emergence at 60+ dB SPL).
-  if 60.0 in efr_idx and 80.0 in efr_idx and "OHC-Loss" in efr_results:
-    idx_60 = efr_idx[60.0]
-    idx_80 = efr_idx[80.0]
-    if len(efr_results["OHC-Loss"]) > max(idx_60, idx_80):
-      ohc_60 = efr_results["OHC-Loss"][idx_60]
-      ohc_80 = efr_results["OHC-Loss"][idx_80]
-      ctrl_80 = (
-        efr_results["Control"][idx_80]
-        if "Control" in efr_results and len(efr_results["Control"]) > idx_80
-        else 1.0
-      )
-      ohc_comp_ok = (ohc_80 > 8.0 * ohc_60) and (ohc_80 > 0.6 * ctrl_80)
-    else:
-      ohc_comp_ok = False
-  else:
-    ohc_comp_ok = False
+  ohc_60 = _get_level_value(efr_results, efr_idx, "OHC-Loss", 60.0)
+  ohc_80 = _get_level_value(efr_results, efr_idx, "OHC-Loss", 80.0)
+  ctrl_80_efr = _get_level_value(efr_results, efr_idx, "Control", 80.0)
+  ctrl_ref = ctrl_80_efr if ctrl_80_efr is not None else 1.0
+  ohc_comp_ok = (
+    ohc_60 is not None
+    and ohc_80 is not None
+    and (ohc_80 > 8.0 * ohc_60)
+    and (ohc_80 > 0.6 * ctrl_ref)
+  )
 
   # 6. Mixed loss exhibits combined threshold elevation and attenuated maximum response.
-  if (
-    80.0 in click_idx
-    and 80.0 in efr_idx
-    and "Mixed-Loss" in abr_results
-    and "OHC-Loss" in abr_results
-  ):
-    idx_c = click_idx[80.0]
-    idx_e = efr_idx[80.0]
-    if (
-      len(abr_results["Mixed-Loss"]) > idx_c
-      and len(abr_results["OHC-Loss"]) > idx_c
-      and "Mixed-Loss" in efr_results
-      and "OHC-Loss" in efr_results
-      and len(efr_results["Mixed-Loss"]) > idx_e
-      and len(efr_results["OHC-Loss"]) > idx_e
-    ):
-      mixed_abr_80 = abr_results["Mixed-Loss"][idx_c]
-      ohc_abr_80 = abr_results["OHC-Loss"][idx_c]
-      mixed_efr_80 = efr_results["Mixed-Loss"][idx_e]
-      ohc_efr_80 = efr_results["OHC-Loss"][idx_e]
-      mixed_ok = (mixed_abr_80 < 0.7 * ohc_abr_80) and (mixed_efr_80 < 0.7 * ohc_efr_80)
-    else:
-      mixed_ok = False
-  else:
-    mixed_ok = False
+  mixed_abr = _get_level_value(abr_results, click_idx, "Mixed-Loss", 80.0)
+  ohc_abr = _get_level_value(abr_results, click_idx, "OHC-Loss", 80.0)
+  mixed_efr = _get_level_value(efr_results, efr_idx, "Mixed-Loss", 80.0)
+  ohc_efr = _get_level_value(efr_results, efr_idx, "OHC-Loss", 80.0)
+  mixed_ok = (
+    mixed_abr is not None
+    and ohc_abr is not None
+    and mixed_efr is not None
+    and ohc_efr is not None
+    and (mixed_abr < 0.7 * ohc_abr)
+    and (mixed_efr < 0.7 * ohc_efr)
+  )
 
   return BiologicalValidation(
     synaptopathy_low_preserved=syn_low_ok,
