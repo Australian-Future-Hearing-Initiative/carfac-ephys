@@ -1,12 +1,12 @@
 """CARFAC model wrapper for biophysical hearing impairment electrophysiology."""
 
-from collections.abc import Sequence
 import copy
+from collections.abc import Sequence
 from typing import NamedTuple
 
-from carfac.jax import carfac
 import jax.numpy as jnp
 import numpy as np
+from carfac.jax import carfac
 
 from carfac_ephys import constants
 

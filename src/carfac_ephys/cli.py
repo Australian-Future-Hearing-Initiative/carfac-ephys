@@ -4,7 +4,7 @@ import pathlib
 
 import click
 
-from carfac_ephys import experiment
+from carfac_ephys import electrophysiology, experiment
 
 
 @click.command(name="carfac-ephys-simulate")
@@ -40,7 +40,7 @@ def main(
   click.echo("Running ABR Wave-I click level series simulation...")
   abr_results = experiment.simulate_abr_level_series(click_levels_db=click_levels)
   abr_table = experiment.format_ascii_table(
-    title="ABR Wave-I Onset Amplitude vs Sound Level",
+    title=f"ABR Wave-I Onset Amplitude ({electrophysiology.RESPONSE_UNIT}) vs Sound Level",
     levels_db=click_levels,
     results=abr_results,
   )
@@ -50,11 +50,14 @@ def main(
   click.echo("Running EFR SAM tone level series simulation...")
   efr_results = experiment.simulate_efr_level_series(efr_levels_db=efr_levels)
   efr_table = experiment.format_ascii_table(
-    title="EFR Spectral Magnitude at 100 Hz vs Sound Level",
+    title=f"EFR Spectral Magnitude at 100 Hz ({electrophysiology.RESPONSE_UNIT}) vs Sound Level",
     levels_db=efr_levels,
     results=efr_results,
   )
   click.echo("\n" + efr_table + "\n")
+
+  # Report the fitted conversion from arbitrary units to microvolts.
+  click.echo(experiment.format_calibration_line(click_levels, abr_results) + "\n")
 
   # Generate and save diagnostic figures if requested.
   if plot:

@@ -1,18 +1,67 @@
 """Electrophysiological response extraction for CARFAC simulations."""
 
+from collections.abc import Sequence
+
 import numpy as np
+
+# Unit label for extracted responses. CARFAC neural activity patterns are
+# dimensionless model output, not calibrated firing rates or recorded voltages,
+# so responses are reported in arbitrary units and calibrated post hoc against
+# animal recordings via `fit_microvolts_per_au`.
+RESPONSE_UNIT: str = "AU"
+
+
+def fit_microvolts_per_au(
+  responses_au: Sequence[float],
+  measured_uv: Sequence[float],
+) -> float:
+  """Fits the scale factor converting simulated responses into microvolts.
+
+  Solves the least-squares proportional fit measured_uv ~ k * responses_au,
+  which has no intercept because a zero model response corresponds to a zero
+  recorded potential.
+
+  Args:
+    responses_au: Simulated responses in arbitrary units.
+    measured_uv: Recorded amplitudes in microvolts, paired with responses_au.
+
+  Returns:
+    Scale factor in microvolts per arbitrary unit (> 0).
+  """
+  # Validate paired, non-empty, finite inputs.
+  simulated = np.asarray(responses_au, dtype=np.float64)
+  measured = np.asarray(measured_uv, dtype=np.float64)
+  if simulated.ndim != 1 or measured.ndim != 1:
+    raise ValueError(f"Inputs must be 1D, got shapes {simulated.shape} and {measured.shape}.")
+  if simulated.size != measured.size:
+    raise ValueError(f"Inputs must be equally long, got {simulated.size} and {measured.size}.")
+  if simulated.size == 0:
+    raise ValueError("Inputs cannot be empty.")
+  if not (np.isfinite(simulated).all() and np.isfinite(measured).all()):
+    raise ValueError("Inputs contain NaN or Inf values.")
+
+  # Reject degenerate fits that would divide by a vanishing model response.
+  denominator = float(np.sum(simulated * simulated))
+  if denominator <= 0.0:
+    raise ValueError("responses_au must contain a non-zero value.")
+
+  scale = float(np.sum(simulated * measured) / denominator)
+  if scale <= 0.0:
+    raise ValueError(f"Fitted scale must be positive, got {scale}.")
+  return scale
 
 
 def compute_population_rate(naps: np.ndarray) -> np.ndarray:
-  """Computes population auditory nerve firing rate across channels.
+  """Computes population auditory nerve activity across channels.
 
-  Sums across cochlear channels: r(t) = sum_c naps(t, c).
+  Sums across cochlear channels: r(t) = sum_c naps(t, c). The result is in
+  arbitrary units (`RESPONSE_UNIT`), not calibrated spike rates.
 
   Args:
     naps: Neural activity patterns array of shape (samples, n_channels) or (samples,).
 
   Returns:
-    1D array of population firing rate of shape (samples,).
+    1D array of population response of shape (samples,), in arbitrary units.
   """
   # Reject non-array and string types.
   if isinstance(naps, str):
@@ -50,14 +99,14 @@ def extract_wave_i_amplitude(
   either baseline-subtracted peak amplitude or peak-to-trough amplitude.
 
   Args:
-    population_rate: 1D array of population auditory nerve firing rates.
+    population_rate: 1D array of population response in arbitrary units.
     sample_rate: Sampling rate in Hz.
     stimulus_onset_s: Stimulus onset time in seconds.
     window_s: Analysis window duration following onset in seconds.
     mode: Extraction mode ('baseline_to_peak' or 'peak_to_trough').
 
   Returns:
-    Extracted Wave-I amplitude (>= 0.0).
+    Extracted Wave-I amplitude in arbitrary units (>= 0.0).
   """
   # Reject non-array and string types.
   if isinstance(population_rate, str):
@@ -129,7 +178,7 @@ def extract_efr_amplitude(
   steady-state population response, normalized by the window length.
 
   Args:
-    population_rate: 1D array of population auditory nerve firing rates.
+    population_rate: 1D array of population response in arbitrary units.
     sample_rate: Sampling rate in Hz.
     fm_hz: Modulation frequency in Hz.
     steady_state_start_s: Start time of steady-state window in seconds.
@@ -137,7 +186,7 @@ def extract_efr_amplitude(
       If False, returns normalized DFT magnitude (|X| / N).
 
   Returns:
-    Extracted EFR amplitude at modulation frequency fm_hz (>= 0.0).
+    Extracted EFR amplitude at modulation frequency fm_hz, in arbitrary units (>= 0.0).
   """
   # Reject non-array and string types.
   if isinstance(population_rate, str):

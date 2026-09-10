@@ -3,15 +3,17 @@
 import pathlib
 from typing import Any
 
-from click.testing import CliRunner
 import pytest
+from click.testing import CliRunner
 
 from carfac_ephys.cli import main
+from carfac_ephys.empirical import CLICK_FREQUENCY_HZ, load_chinchilla_abr_dataset
 from carfac_ephys.experiment import (
   DEFAULT_COHORT_CONDITIONS,
   BiologicalValidation,
   Cohort,
   CohortCondition,
+  fit_response_scale_uv_per_au,
   format_ascii_table,
   format_markdown_table,
   generate_simulation_report,
@@ -373,9 +375,38 @@ class TestGenerateSimulationReport:
     assert "# CARFAC Electrophysiology Cohort Simulation Report" in content
     assert "Bharadwaj et al. 2022" in content
     assert "Synaptopathy-50" in content
-    assert "ABR Wave-I Onset Amplitude" in content
-    assert "EFR Spectral Magnitude at 100 Hz" in content
+    assert "ABR Wave-I Onset Amplitude (AU)" in content
+    assert "spikes/s" not in content
+    assert "Fitted scale factor" in content
+    assert "EFR Spectral Magnitude at 100 Hz (AU)" in content
     assert "ALL CHECKS PASSED" in content
 
     assert report_path.exists()
     assert report_path.read_text(encoding="utf-8") == content
+
+
+class TestFitResponseScale:
+  """Tests for fit_response_scale_uv_per_au."""
+
+  def test_scale_maps_control_response_to_empirical_amplitude(self):
+    click_levels = [60.0, 80.0]
+    abr_results = {"Control": [10.0, 67.5298]}
+    scale = fit_response_scale_uv_per_au(click_levels, abr_results)
+
+    dataset = load_chinchilla_abr_dataset()
+    expected_uv = dataset.high_level_w1_uv[CLICK_FREQUENCY_HZ].mean_pre
+    assert scale * 67.5298 == pytest.approx(expected_uv)
+    assert scale > 0.0
+
+  def test_missing_calibration_level_is_rejected(self):
+    with pytest.raises(ValueError, match="calibrate"):
+      fit_response_scale_uv_per_au([60.0], {"Control": [10.0]})
+
+  def test_report_notes_unavailable_scale_without_calibration_level(self):
+    content = generate_simulation_report(
+      click_levels_db=[60.0],
+      abr_results={"Control": [10.0]},
+      efr_levels_db=[60.0],
+      efr_results={"Control": [1.0]},
+    )
+    assert "Scale factor unavailable" in content

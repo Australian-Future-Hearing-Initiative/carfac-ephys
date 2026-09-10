@@ -8,6 +8,7 @@ from carfac_ephys.electrophysiology import (
   compute_population_rate,
   extract_efr_amplitude,
   extract_wave_i_amplitude,
+  fit_microvolts_per_au,
 )
 from carfac_ephys.stimuli import generate_click, generate_sam_tone
 
@@ -388,3 +389,36 @@ class TestEdgeCasesAndExports:
     assert hasattr(carfac_ephys, "compute_population_rate")
     assert hasattr(carfac_ephys, "extract_wave_i_amplitude")
     assert hasattr(carfac_ephys, "extract_efr_amplitude")
+    assert hasattr(carfac_ephys, "fit_microvolts_per_au")
+    assert carfac_ephys.RESPONSE_UNIT == "AU"
+
+
+class TestFitMicrovoltsPerAu:
+  """Tests for fit_microvolts_per_au."""
+
+  def test_exact_proportional_fit(self):
+    assert fit_microvolts_per_au([1.0, 2.0, 4.0], [0.5, 1.0, 2.0]) == pytest.approx(0.5)
+
+  def test_least_squares_fit_of_noisy_pairs(self):
+    scale = fit_microvolts_per_au([1.0, 2.0], [0.4, 1.2])
+    assert scale == pytest.approx((1.0 * 0.4 + 2.0 * 1.2) / (1.0 + 4.0))
+
+  def test_rejects_mismatched_lengths(self):
+    with pytest.raises(ValueError, match="equally long"):
+      fit_microvolts_per_au([1.0, 2.0], [1.0])
+
+  def test_rejects_empty_inputs(self):
+    with pytest.raises(ValueError, match="empty"):
+      fit_microvolts_per_au([], [])
+
+  def test_rejects_zero_responses(self):
+    with pytest.raises(ValueError, match="non-zero"):
+      fit_microvolts_per_au([0.0, 0.0], [1.0, 2.0])
+
+  def test_rejects_non_positive_scale(self):
+    with pytest.raises(ValueError, match="positive"):
+      fit_microvolts_per_au([1.0], [-1.0])
+
+  def test_rejects_non_finite_values(self):
+    with pytest.raises(ValueError, match="NaN or Inf"):
+      fit_microvolts_per_au([1.0, np.nan], [1.0, 1.0])

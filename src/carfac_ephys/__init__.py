@@ -12,9 +12,11 @@ from carfac_ephys.constants import (
   db_spl_to_amplitude,
 )
 from carfac_ephys.electrophysiology import (
+  RESPONSE_UNIT,
   compute_population_rate,
   extract_efr_amplitude,
   extract_wave_i_amplitude,
+  fit_microvolts_per_au,
 )
 from carfac_ephys.empirical import (
   CLICK_FREQUENCY_HZ,
@@ -31,6 +33,8 @@ from carfac_ephys.experiment import (
   BiologicalValidation,
   Cohort,
   CohortCondition,
+  fit_response_scale_uv_per_au,
+  format_calibration_line,
   format_markdown_table,
   generate_simulation_report,
   get_default_cohort,
@@ -50,6 +54,7 @@ __all__ = [
   "DEFAULT_EFR_LEVELS_DB",
   "DEFAULT_SAMPLE_RATE",
   "DYNAMIC_RANGE_DB",
+  "RESPONSE_UNIT",
   "AnimalWaveAmplitudes",
   "BiologicalValidation",
   "CarfacModel",
@@ -64,6 +69,9 @@ __all__ = [
   "db_spl_to_amplitude",
   "extract_efr_amplitude",
   "extract_wave_i_amplitude",
+  "fit_microvolts_per_au",
+  "fit_response_scale_uv_per_au",
+  "format_calibration_line",
   "format_markdown_table",
   "generate_click",
   "generate_sam_tone",

@@ -1,7 +1,7 @@
 """Cohort definitions and simulation level series runners for CARFAC electrophysiology."""
 
-from collections.abc import Mapping, Sequence
 import pathlib
+from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple
 
 import matplotlib
@@ -10,10 +10,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from carfac_ephys import carfac_model
-from carfac_ephys import constants
-from carfac_ephys import electrophysiology
-from carfac_ephys import stimuli
+from carfac_ephys import carfac_model, constants, electrophysiology, empirical, stimuli
 
 
 class CohortCondition(NamedTuple):
@@ -202,7 +199,7 @@ def simulate_abr_level_series(
     mode: Wave-I extraction mode ('baseline_to_peak' or 'peak_to_trough').
 
   Returns:
-    Dictionary mapping condition name to list of Wave-I onset amplitudes.
+    Dictionary mapping condition name to list of Wave-I onset amplitudes, in arbitrary units.
   """
   # Validate input parameters.
   if sample_rate <= 0:
@@ -272,7 +269,7 @@ def simulate_efr_level_series(
     single_sided: Whether to return single-sided Fourier magnitude.
 
   Returns:
-    Dictionary mapping condition name to list of EFR spectral magnitudes.
+    Dictionary mapping condition name to list of EFR spectral magnitudes, in arbitrary units.
   """
   # Validate input parameters.
   if sample_rate <= 0:
@@ -321,6 +318,46 @@ def simulate_efr_level_series(
     results[condition.name] = mags
 
   return results
+
+
+# Click level (dB SPL) at which the simulated healthy response is matched to the
+# empirical high-level animal Wave-I amplitude, and the cohort it is matched to.
+CALIBRATION_LEVEL_DB: float = 80.0
+BASELINE_CONDITION: str = "Control"
+
+
+def fit_response_scale_uv_per_au(
+  click_levels_db: Sequence[float],
+  abr_results: Mapping[str, Sequence[float]],
+  dataset: empirical.ChinchillaAbrDataset | None = None,
+  level_db: float = CALIBRATION_LEVEL_DB,
+  condition: str = BASELINE_CONDITION,
+) -> float:
+  """Fits the microvolts per arbitrary unit scale of simulated ABR responses.
+
+  Simulated responses are dimensionless, so they are calibrated against the
+  pre-exposure (healthy) click Wave-I amplitude of the chinchilla dataset.
+
+  Args:
+    click_levels_db: Click sound levels in dB SPL.
+    abr_results: Mapping of condition name to Wave-I amplitudes in AU.
+    dataset: Empirical dataset; loaded from package data when None.
+    level_db: Click level matched to the empirical high-level amplitude.
+    condition: Cohort treated as the healthy baseline.
+
+  Returns:
+    Scale factor in microvolts per arbitrary unit (> 0).
+  """
+  # Look up the simulated healthy response at the calibration level.
+  level_indices = {float(level): index for index, level in enumerate(click_levels_db)}
+  simulated_au = _get_level_value(abr_results, level_indices, condition, level_db)
+  if simulated_au is None:
+    raise ValueError(f"No '{condition}' response at {level_db} dB SPL to calibrate against.")
+
+  # Match it to the empirical pre-exposure click Wave-I amplitude.
+  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+  measured_uv = data.high_level_w1_uv[empirical.CLICK_FREQUENCY_HZ].mean_pre
+  return electrophysiology.fit_microvolts_per_au([simulated_au], [measured_uv])
 
 
 def format_ascii_table(
@@ -470,7 +507,7 @@ def plot_abr_growth(
     results=results,
     output_path=output_path,
     xlabel="Click Sound Level (dB SPL)",
-    ylabel="ABR Wave-I Onset Amplitude (spikes/s)",
+    ylabel=f"ABR Wave-I Onset Amplitude ({electrophysiology.RESPONSE_UNIT})",
     title="ABR Wave-I Input-Output Growth Functions",
   )
 
@@ -487,7 +524,7 @@ def plot_efr_growth(
     results=results,
     output_path=output_path,
     xlabel="SAM Tone Sound Level (dB SPL)",
-    ylabel="EFR Spectral Magnitude at 100 Hz (spikes/s)",
+    ylabel=f"EFR Spectral Magnitude at 100 Hz ({electrophysiology.RESPONSE_UNIT})",
     title="Envelope Following Response (EFR) Growth Functions",
   )
 
@@ -666,6 +703,22 @@ def validate_biological_signatures(
   )
 
 
+def format_calibration_line(
+  click_levels_db: Sequence[float],
+  abr_results: Mapping[str, Sequence[float]],
+) -> str:
+  """Renders the fitted microvolt scale, or a note when it cannot be fitted."""
+  try:
+    scale = fit_response_scale_uv_per_au(click_levels_db, abr_results)
+  except (ValueError, KeyError, FileNotFoundError) as error:
+    return f"Scale factor unavailable: {error}"
+  return (
+    f"Fitted scale factor: **{scale:.4g} uV/{electrophysiology.RESPONSE_UNIT}**, matching the "
+    f"{BASELINE_CONDITION} response at {CALIBRATION_LEVEL_DB:g} dB SPL to the pre-exposure "
+    "chinchilla click Wave-I amplitude (Bharadwaj et al. 2022)."
+  )
+
+
 def generate_simulation_report(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
@@ -697,6 +750,9 @@ def generate_simulation_report(
   abr_md = format_markdown_table(click_levels_db, abr_results)
   efr_md = format_markdown_table(efr_levels_db, efr_results)
 
+  # Fit the microvolt scale; skip it when the calibration level was not simulated.
+  calibration_line = format_calibration_line(click_levels_db, abr_results)
+
   # Build markdown report sections.
   report_lines = [
     "# CARFAC Electrophysiology Cohort Simulation Report",
@@ -717,13 +773,20 @@ def generate_simulation_report(
     "",
     "## 3. Electrophysiological Response Data",
     "",
-    "### ABR Wave-I Onset Amplitude (spikes/s)",
+    f"Responses are in arbitrary units ({electrophysiology.RESPONSE_UNIT}); CARFAC output is not",
+    "calibrated in spikes per second or microvolts. See the calibration below to convert.",
+    "",
+    f"### ABR Wave-I Onset Amplitude ({electrophysiology.RESPONSE_UNIT})",
     "",
     abr_md,
     "",
-    "### EFR Spectral Magnitude at 100 Hz (spikes/s)",
+    f"### EFR Spectral Magnitude at 100 Hz ({electrophysiology.RESPONSE_UNIT})",
     "",
     efr_md,
+    "",
+    "### Response Scale Calibration",
+    "",
+    calibration_line,
     "",
     "## 4. Biological Signature Verification",
     "",
