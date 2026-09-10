@@ -44,6 +44,7 @@ def amplitude_to_db_spl(
     db = 20.0 * np.log10(np.where(amp_arr > 0.0, amp_arr, np.nan)) + DYNAMIC_RANGE_DB
 
   # Return scalar or array matching input type.
+  db_clean = np.nan_to_num(db, nan=-np.inf)
   if np.ndim(amplitude) == 0:
-    return float(np.nan_to_num(db, nan=-np.inf))
-  return np.nan_to_num(db, nan=-np.inf)
+    return float(db_clean)
+  return db_clean

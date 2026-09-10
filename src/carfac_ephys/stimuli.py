@@ -2,12 +2,12 @@
 
 import numpy as np
 
-from carfac_ephys.constants import DEFAULT_SAMPLE_RATE, db_spl_to_amplitude
+from carfac_ephys import constants
 
 
 def generate_click(
   duration_s: float = 0.03,
-  sample_rate: int = DEFAULT_SAMPLE_RATE,
+  sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
   peak_db_spl: float = 80.0,
   pulse_width_s: float = 0.0001,
   delay_s: float = 0.005,
@@ -44,7 +44,7 @@ def generate_click(
   end_idx = min(n_samples, start_idx + pulse_samples)
 
   # Calibrate peak amplitude against CARFAC reference.
-  amplitude = float(db_spl_to_amplitude(peak_db_spl))
+  amplitude = float(constants.db_spl_to_amplitude(peak_db_spl))
   waveform[start_idx:end_idx] = amplitude
 
   return waveform
@@ -55,6 +55,9 @@ def _compute_raised_cosine_ramp(
   n_ramp: int,
 ) -> np.ndarray:
   """Computes a symmetric raised cosine onset and offset ramp."""
+  # Bound ramp length to half of buffer.
+  n_ramp = min(n_samples // 2, max(0, n_ramp))
+
   # Return uniform envelope if ramp duration is zero.
   if n_ramp <= 0:
     return np.ones(n_samples, dtype=np.float64)
@@ -77,7 +80,7 @@ def generate_sam_tone(
   fm_hz: float = 100.0,
   depth: float = 1.0,
   duration_s: float = 0.2,
-  sample_rate: int = DEFAULT_SAMPLE_RATE,
+  sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
   target_db_spl: float = 70.0,
   ramp_s: float = 0.01,
 ) -> np.ndarray:
@@ -118,7 +121,7 @@ def generate_sam_tone(
   # Compute time array and carrier peak amplitude.
   n_samples = int(round(duration_s * sample_rate))
   t = np.arange(n_samples, dtype=np.float64) / sample_rate
-  carrier_rms = float(db_spl_to_amplitude(target_db_spl))
+  carrier_rms = float(constants.db_spl_to_amplitude(target_db_spl))
   carrier_peak = carrier_rms * np.sqrt(2.0)
 
   # Synthesize modulated waveform.
@@ -129,6 +132,6 @@ def generate_sam_tone(
   # Apply onset and offset tapering.
   n_ramp = int(round(ramp_s * sample_rate))
   ramp = _compute_raised_cosine_ramp(n_samples, n_ramp)
-  signal = signal * ramp
+  signal *= ramp
 
   return signal
