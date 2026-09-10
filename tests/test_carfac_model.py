@@ -116,9 +116,17 @@ class TestOhcHealth:
     with pytest.raises(ValueError):
       build_model(ohc_health=np.ones((77, 2)))
 
+  def test_numpy_scalar_health(self):
+    model_f32 = build_model(ohc_health=np.float32(0.5))
+    assert np.allclose(model_f32.ohc_health, 0.5)
+    model_f64 = build_model(ohc_health=np.float64(0.8))
+    assert np.allclose(model_f64.ohc_health, 0.8)
+
   def test_invalid_health_type(self):
     with pytest.raises(TypeError):
       build_model(ohc_health="healthy")  # pyrefly: ignore[bad-argument-type]
+    with pytest.raises(TypeError):
+      build_model(ohc_health=True)  # pyrefly: ignore[bad-argument-type]
 
 
 class TestFiberRetentionScaling:
@@ -170,9 +178,17 @@ class TestFiberRetentionScaling:
     with pytest.raises(ValueError):
       build_model(fiber_retention=(0.5, 0.5, 0.5, 0.5))
 
+  def test_numpy_scalar_retention(self):
+    model_f32 = build_model(fiber_retention=np.float32(0.5))
+    assert np.allclose(model_f32.n_fibers[:, 0], 250.0)
+    model_f64 = build_model(fiber_retention=np.float64(0.8))
+    assert np.allclose(model_f64.n_fibers[:, 0], 400.0)
+
   def test_invalid_fiber_type(self):
     with pytest.raises(TypeError):
       build_model(fiber_retention="full")  # pyrefly: ignore[bad-argument-type]
+    with pytest.raises(TypeError):
+      build_model(fiber_retention=False)  # pyrefly: ignore[bad-argument-type]
 
 
 class TestCarfacModelRun:

@@ -29,7 +29,9 @@ def _broadcast_ohc_health(
     raise TypeError(f"ohc_health cannot be a string, got {type(ohc_health).__name__}.")
 
   # Convert scalar health to broadcasted channel array.
-  if isinstance(ohc_health, (int, float)) and not isinstance(ohc_health, bool):
+  if isinstance(ohc_health, (int, float, np.number)) and not isinstance(
+    ohc_health, (bool, np.bool_)
+  ):
     val = float(ohc_health)
     if not 0.0 <= val <= 1.0:
       raise ValueError(f"ohc_health must be in [0, 1], got {val}.")
@@ -51,7 +53,7 @@ def _broadcast_ohc_health(
 
 
 def _normalize_fiber_retention(
-  fiber_retention: float | FiberRetention | tuple[float, float, float] | Sequence[float],
+  fiber_retention: float | FiberRetention | Sequence[float] | np.ndarray,
 ) -> np.ndarray:
   """Validates and converts fiber retention factors to a length-3 float array."""
   # Reject strings.
@@ -59,19 +61,14 @@ def _normalize_fiber_retention(
     raise TypeError(f"fiber_retention cannot be a string, got {type(fiber_retention).__name__}.")
 
   # Handle scalar retention.
-  if isinstance(fiber_retention, (int, float)) and not isinstance(fiber_retention, bool):
+  if isinstance(fiber_retention, (int, float, np.number)) and not isinstance(
+    fiber_retention, (bool, np.bool_)
+  ):
     val = float(fiber_retention)
     factors = np.full(3, val, dtype=np.float32)
 
-  # Handle FiberRetention named tuple.
-  elif isinstance(fiber_retention, FiberRetention):
-    factors = np.array(
-      [fiber_retention.hsr, fiber_retention.msr, fiber_retention.lsr],
-      dtype=np.float32,
-    )
-
-  # Handle tuple, list, or 1D array.
-  elif isinstance(fiber_retention, (tuple, list, np.ndarray, Sequence)):
+  # Handle sequence or 1D array (including FiberRetention named tuple).
+  elif isinstance(fiber_retention, (Sequence, np.ndarray)):
     try:
       ret_arr = np.asarray(fiber_retention, dtype=np.float32)
     except (ValueError, TypeError) as e:
@@ -146,24 +143,20 @@ class CarfacModel:
     wave_arr = np.asarray(waveform, dtype=np.float32)
 
     # Validate input dimensions.
-    if wave_arr.ndim == 1:
-      input_waves = wave_arr
-    elif wave_arr.ndim == 2 and wave_arr.shape[1] == 1:
-      input_waves = wave_arr
-    else:
+    if not (wave_arr.ndim == 1 or (wave_arr.ndim == 2 and wave_arr.shape[1] == 1)):
       raise ValueError(f"waveform must be 1D or 2D with 1 channel, got shape {wave_arr.shape}.")
 
     # Check for NaN or Inf values.
-    if np.isnan(input_waves).any() or np.isinf(input_waves).any():
+    if not np.isfinite(wave_arr).all():
       raise ValueError("waveform contains NaN or Inf values.")
 
     # Handle zero-sample input.
-    if input_waves.shape[0] == 0:
+    if wave_arr.shape[0] == 0:
       return np.zeros((0, self.n_channels), dtype=np.float32)
 
     # Run CARFAC segment.
     output = carfac.run_segment(
-      input_waves,
+      wave_arr,
       self.hypers,
       self.weights,
       self.state,
@@ -176,7 +169,7 @@ class CarfacModel:
 
 def build_model(
   ohc_health: float | Sequence[float] | np.ndarray = 1.0,
-  fiber_retention: float | FiberRetention | tuple[float, float, float] = 1.0,
+  fiber_retention: float | FiberRetention | Sequence[float] | np.ndarray = 1.0,
   fs: int = constants.DEFAULT_SAMPLE_RATE,
 ) -> CarfacModel:
   """Builds and initializes a CarfacModel with specified biophysical health.
