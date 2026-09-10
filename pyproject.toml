@@ -1,0 +1,31 @@
+[project]
+name = "carfac-ephys"
+version = "0.1.0"
+description = "Simulating animal cochlear impairment electrophysiology with CARFAC."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "carfac[jax] @ git+https://github.com/google/carfac@4cdb95eefd2161bc0c64566d2ee3f05637a00d51#subdirectory=python",
+    "flax>=0.12.0",
+    "jax>=0.10.1",
+    "jaxlib>=0.10.1",
+    "numpy>=1.26.0",
+    "matplotlib>=3.8.0",
+    "click>=8.1.0",
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+carfac-ephys-simulate = "carfac_ephys.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+indent-width = 2
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
