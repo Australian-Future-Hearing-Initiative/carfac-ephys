@@ -1,6 +1,7 @@
 """Empirical chinchilla ABR data from Bharadwaj et al. (2022).
 
-Loads the noise-exposure (temporary threshold shift) dataset shipped in `data/`:
+Loads the noise-exposure (temporary threshold shift) dataset shipped inside the
+package (`carfac_ephys/data/`):
 group ABR thresholds and high-level Wave-I / Wave-V amplitudes measured one week
 before and two weeks after exposure, plus per-animal amplitudes averaged over
 the 4 and 8 kHz tone bursts.
@@ -10,12 +11,15 @@ Reference: Bharadwaj et al. (2022) Commun Biol, doi:10.1038/s42003-022-03691-4.
 
 import csv
 import dataclasses
+import importlib.resources
 import json
 import pathlib
 from collections.abc import Sequence
 
-# Directory holding the shipped empirical data files.
-DEFAULT_DATA_DIR: pathlib.Path = pathlib.Path(__file__).resolve().parents[2] / "data"
+# Directory holding the empirical data files shipped as package data. Resolved
+# through importlib.resources so it also works from an installed wheel; assumes
+# a regular (non-zipped) install, which is what pip and uv produce.
+DEFAULT_DATA_DIR: pathlib.Path = pathlib.Path(str(importlib.resources.files(__package__))) / "data"
 
 # File names of the empirical data files within the data directory.
 SUMMARY_FILE_NAME: str = "chinchilla_abr_summary.json"
