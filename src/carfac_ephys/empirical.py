@@ -8,11 +8,11 @@ the 4 and 8 kHz tone bursts.
 Reference: Bharadwaj et al. (2022) Commun Biol, doi:10.1038/s42003-022-03691-4.
 """
 
-from collections.abc import Sequence
 import csv
 import dataclasses
 import json
 import pathlib
+from collections.abc import Sequence
 
 # Directory holding the shipped empirical data files.
 DEFAULT_DATA_DIR: pathlib.Path = pathlib.Path(__file__).resolve().parents[2] / "data"
@@ -27,6 +27,22 @@ CLICK_FREQUENCY_HZ: float = 0.0
 # Labels of the two measurement time points in the per-animal CSV file.
 PRE_TIME_POINT: str = "pre"
 POST_TIME_POINT: str = "2wk"
+
+
+def _post_pre_ratio(post: float, pre: float, label: str) -> float:
+  """Returns post over pre, rejecting a zero baseline.
+
+  Args:
+    post: Value measured after exposure.
+    pre: Baseline value measured before exposure.
+    label: Name of the baseline, used in the error message.
+
+  Returns:
+    Dimensionless post over pre ratio.
+  """
+  if pre == 0.0:
+    raise ZeroDivisionError(f"{label} is zero; ratio is undefined.")
+  return post / pre
 
 
 @dataclasses.dataclass(frozen=True)
@@ -46,9 +62,7 @@ class PrePostStat:
   @property
   def ratio(self) -> float:
     """Post over pre ratio of the group means."""
-    if self.mean_pre == 0.0:
-      raise ZeroDivisionError("mean_pre is zero; ratio is undefined.")
-    return self.mean_post / self.mean_pre
+    return _post_pre_ratio(self.mean_post, self.mean_pre, "mean_pre")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -64,16 +78,12 @@ class AnimalWaveAmplitudes:
   @property
   def w1_ratio(self) -> float:
     """Post over pre Wave-I amplitude ratio."""
-    if self.pre_w1_uv == 0.0:
-      raise ZeroDivisionError(f"pre_w1_uv is zero for {self.animal_id}.")
-    return self.post_w1_uv / self.pre_w1_uv
+    return _post_pre_ratio(self.post_w1_uv, self.pre_w1_uv, f"pre_w1_uv of {self.animal_id}")
 
   @property
   def w5_ratio(self) -> float:
     """Post over pre Wave-V amplitude ratio."""
-    if self.pre_w5_uv == 0.0:
-      raise ZeroDivisionError(f"pre_w5_uv is zero for {self.animal_id}.")
-    return self.post_w5_uv / self.pre_w5_uv
+    return _post_pre_ratio(self.post_w5_uv, self.pre_w5_uv, f"pre_w5_uv of {self.animal_id}")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -196,26 +206,17 @@ def _build_stats(
       f"{n_frequencies} or {n_frequencies + 1}."
     )
 
-  # Build per-frequency statistics.
-  stats = {
-    float(frequency): PrePostStat(
+  # Build per-frequency statistics plus the trailing aggregate, if present.
+  def stat_at(index: int) -> PrePostStat:
+    return PrePostStat(
       mean_pre=float(block["mean_pre"][index]),
       mean_post=float(block["mean_post"][index]),
       std_pre=float(block["std_pre"][index]),
       std_post=float(block["std_post"][index]),
     )
-    for index, frequency in enumerate(frequencies_hz)
-  }
 
-  # Build the trailing aggregate entry if the block carries one.
-  aggregate = None
-  if n_entries == n_frequencies + 1:
-    aggregate = PrePostStat(
-      mean_pre=float(block["mean_pre"][-1]),
-      mean_post=float(block["mean_post"][-1]),
-      std_pre=float(block["std_pre"][-1]),
-      std_post=float(block["std_post"][-1]),
-    )
+  stats = {float(frequency): stat_at(index) for index, frequency in enumerate(frequencies_hz)}
+  aggregate = stat_at(-1) if n_entries == n_frequencies + 1 else None
   return stats, aggregate
 
 
