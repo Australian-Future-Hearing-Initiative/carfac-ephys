@@ -45,7 +45,7 @@ def _broadcast_ohc_health(
       raise TypeError("Failed to convert ohc_health elements to float.") from e
     if health.shape != (n_channels,):
       raise ValueError(f"Expected ohc_health shape ({n_channels},), got {health.shape}.")
-    if np.any(health < 0.0) or np.any(health > 1.0):
+    if not np.isfinite(health).all() or np.any(health < 0.0) or np.any(health > 1.0):
       raise ValueError("All ohc_health values must be in [0, 1].")
     return health
 
@@ -81,7 +81,7 @@ def _normalize_fiber_retention(
     raise TypeError(f"Unsupported fiber_retention type: {type(fiber_retention).__name__}.")
 
   # Validate value bounds in [0, 1].
-  if np.any(factors < 0.0) or np.any(factors > 1.0):
+  if not np.isfinite(factors).all() or np.any(factors < 0.0) or np.any(factors > 1.0):
     raise ValueError(f"All fiber_retention factors must be in [0, 1], got {factors}.")
 
   return factors

@@ -15,19 +15,14 @@ from carfac_ephys.stimuli import generate_click, generate_sam_tone
 class TestFiberRetention:
   """Tests for FiberRetention named tuple."""
 
-  def test_defaults(self):
+  def test_defaults_and_custom(self):
     ret = FiberRetention()
-    assert ret.hsr == 1.0
-    assert ret.msr == 1.0
-    assert ret.lsr == 1.0
+    assert ret.hsr == 1.0 and ret.msr == 1.0 and ret.lsr == 1.0
     assert tuple(ret) == (1.0, 1.0, 1.0)
 
-  def test_custom_values(self):
-    ret = FiberRetention(hsr=0.8, msr=0.5, lsr=0.2)
-    assert ret.hsr == 0.8
-    assert ret.msr == 0.5
-    assert ret.lsr == 0.2
-    assert tuple(ret) == (0.8, 0.5, 0.2)
+    custom = FiberRetention(hsr=0.8, msr=0.5, lsr=0.2)
+    assert custom.hsr == 0.8 and custom.msr == 0.5 and custom.lsr == 0.2
+    assert tuple(custom) == (0.8, 0.5, 0.2)
 
 
 class TestBuildModelInit:
@@ -71,13 +66,10 @@ class TestOhcHealth:
   """Tests for outer hair cell health configuration and validation."""
 
   def test_scalar_health(self):
-    model = build_model(ohc_health=0.5)
-    assert model.ohc_health.shape == (77,)
-    assert np.allclose(model.ohc_health, 0.5)
-
-  def test_zero_health(self):
-    model = build_model(ohc_health=0.0)
-    assert np.allclose(model.ohc_health, 0.0)
+    for health in [0.5, 0.0]:
+      model = build_model(ohc_health=health)
+      assert model.ohc_health.shape == (77,)
+      assert np.allclose(model.ohc_health, health)
 
   def test_array_health(self):
     health = np.linspace(1.0, 0.2, 77, dtype=np.float32)
@@ -107,6 +99,12 @@ class TestOhcHealth:
     with pytest.raises(ValueError):
       build_model(ohc_health=bad_arr2)
 
+    # Array with non-finite element.
+    bad_arr_nan = np.ones(77, dtype=np.float32)
+    bad_arr_nan[10] = np.nan
+    with pytest.raises(ValueError):
+      build_model(ohc_health=bad_arr_nan)
+
   def test_invalid_health_dimensions(self):
     # Length mismatch.
     with pytest.raises(ValueError):
@@ -127,33 +125,24 @@ class TestOhcHealth:
       build_model(ohc_health="healthy")  # pyrefly: ignore[bad-argument-type]
     with pytest.raises(TypeError):
       build_model(ohc_health=True)  # pyrefly: ignore[bad-argument-type]
+    with pytest.raises(TypeError):
+      build_model(ohc_health=["healthy"] * 77)  # pyrefly: ignore[bad-argument-type]
 
 
 class TestFiberRetentionScaling:
   """Tests for fiber retention scaling across fiber types."""
 
   def test_scalar_retention(self):
-    model = build_model(fiber_retention=0.5)
-    assert np.allclose(model.n_fibers[:, 0], 250.0)
-    assert np.allclose(model.n_fibers[:, 1], 175.0)
-    assert np.allclose(model.n_fibers[:, 2], 125.0)
+    for ret, expected_hsr in [(0.5, 250.0), (0.0, 0.0)]:
+      model = build_model(fiber_retention=ret)
+      assert np.allclose(model.n_fibers[:, 0], expected_hsr)
 
-  def test_zero_retention(self):
-    model = build_model(fiber_retention=0.0)
-    assert np.allclose(model.n_fibers, 0.0)
-
-  def test_named_tuple_retention(self):
+  def test_sequence_retention(self):
     ret = FiberRetention(hsr=0.6, msr=0.4, lsr=0.2)
     model = build_model(fiber_retention=ret)
     assert np.allclose(model.n_fibers[:, 0], 500.0 * 0.6)
     assert np.allclose(model.n_fibers[:, 1], 350.0 * 0.4)
     assert np.allclose(model.n_fibers[:, 2], 250.0 * 0.2)
-
-  def test_tuple_retention(self):
-    model = build_model(fiber_retention=(0.8, 0.5, 0.3))
-    assert np.allclose(model.n_fibers[:, 0], 500.0 * 0.8)
-    assert np.allclose(model.n_fibers[:, 1], 350.0 * 0.5)
-    assert np.allclose(model.n_fibers[:, 2], 250.0 * 0.3)
 
   def test_array_retention(self):
     arr = np.array([0.7, 0.6, 0.5], dtype=np.float32)
@@ -171,6 +160,12 @@ class TestFiberRetentionScaling:
       build_model(fiber_retention=(-0.1, 1.0, 1.0))
     with pytest.raises(ValueError):
       build_model(fiber_retention=(1.0, 1.5, 1.0))
+    with pytest.raises(ValueError):
+      build_model(fiber_retention=np.nan)
+    with pytest.raises(ValueError):
+      build_model(fiber_retention=(np.nan, 1.0, 1.0))
+    with pytest.raises(ValueError):
+      build_model(fiber_retention=(np.inf, 1.0, 1.0))
 
   def test_invalid_fiber_length(self):
     with pytest.raises(ValueError):
@@ -189,6 +184,8 @@ class TestFiberRetentionScaling:
       build_model(fiber_retention="full")  # pyrefly: ignore[bad-argument-type]
     with pytest.raises(TypeError):
       build_model(fiber_retention=False)  # pyrefly: ignore[bad-argument-type]
+    with pytest.raises(TypeError):
+      build_model(fiber_retention=("a", "b", "c"))  # pyrefly: ignore[bad-argument-type]
 
 
 class TestCarfacModelRun:
