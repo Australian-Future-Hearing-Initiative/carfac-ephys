@@ -247,6 +247,10 @@ class TestCli:
     assert "ABR Wave-I" in result.output
     assert "EFR Spectral Magnitude" in result.output
     assert "Saved" not in result.output
+    # The calibration line is shared with the markdown report; the terminal
+    # echoes it verbatim, so it must not carry markdown markup.
+    assert "Fitted scale factor" in result.output
+    assert "**" not in result.output
 
   def test_cli_quick_with_plot(self, tmp_path: pathlib.Path):
     runner = CliRunner()

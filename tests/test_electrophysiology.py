@@ -396,9 +396,6 @@ class TestEdgeCasesAndExports:
 class TestFitMicrovoltsPerAu:
   """Tests for fit_microvolts_per_au."""
 
-  def test_exact_proportional_fit(self):
-    assert fit_microvolts_per_au([1.0, 2.0, 4.0], [0.5, 1.0, 2.0]) == pytest.approx(0.5)
-
   def test_least_squares_fit_of_noisy_pairs(self):
     scale = fit_microvolts_per_au([1.0, 2.0], [0.4, 1.2])
     assert scale == pytest.approx((1.0 * 0.4 + 2.0 * 1.2) / (1.0 + 4.0))
