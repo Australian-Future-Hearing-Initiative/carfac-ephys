@@ -707,13 +707,17 @@ def format_calibration_line(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
 ) -> str:
-  """Renders the fitted microvolt scale, or a note when it cannot be fitted."""
+  """Renders the fitted microvolt scale, or a note when it cannot be fitted.
+
+  The line is plain text because both the markdown report and the CLI print it
+  verbatim.
+  """
   try:
     scale = fit_response_scale_uv_per_au(click_levels_db, abr_results)
   except (ValueError, KeyError, FileNotFoundError) as error:
     return f"Scale factor unavailable: {error}"
   return (
-    f"Fitted scale factor: **{scale:.4g} uV/{electrophysiology.RESPONSE_UNIT}**, matching the "
+    f"Fitted scale factor: {scale:.4g} uV/{electrophysiology.RESPONSE_UNIT}, matching the "
     f"{BASELINE_CONDITION} response at {CALIBRATION_LEVEL_DB:g} dB SPL to the pre-exposure "
     "chinchilla click Wave-I amplitude (Bharadwaj et al. 2022)."
   )
