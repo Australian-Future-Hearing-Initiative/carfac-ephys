@@ -9,14 +9,18 @@ import pytest
 from carfac_ephys.cli import main
 from carfac_ephys.experiment import (
   DEFAULT_COHORT_CONDITIONS,
+  BiologicalValidation,
   Cohort,
   CohortCondition,
   format_ascii_table,
+  format_markdown_table,
+  generate_simulation_report,
   get_default_cohort,
   plot_abr_growth,
   plot_efr_growth,
   simulate_abr_level_series,
   simulate_efr_level_series,
+  validate_biological_signatures,
 )
 
 
@@ -256,7 +260,122 @@ class TestCli:
     assert result.exit_code == 0
     assert "Saved ABR Wave-I growth figure" in result.output
     assert "Saved EFR growth figure" in result.output
+    assert "Saved simulation report" in result.output
     assert (tmp_path / "abr_wave_i_growth.png").exists()
     assert (tmp_path / "efr_growth.png").exists()
+    assert (tmp_path / "simulation_report.md").exists()
     assert (tmp_path / "abr_wave_i_growth.png").stat().st_size > 0
     assert (tmp_path / "efr_growth.png").stat().st_size > 0
+    assert (tmp_path / "simulation_report.md").stat().st_size > 0
+
+
+class TestMarkdownTableFormatter:
+  """Tests for format_markdown_table."""
+
+  def test_markdown_table_formatting(self):
+    levels = [60.0, 80.0]
+    results = {
+      "Control": [10.5, 65.2],
+      "Synaptopathy-50": [5.8, 33.1],
+    }
+    table = format_markdown_table(levels, results)
+
+    assert "| Condition | 60 dB SPL | 80 dB SPL |" in table
+    assert "| --- | --- | --- |" in table
+    assert "| Control | 10.5000 | 65.2000 |" in table
+    assert "| Synaptopathy-50 | 5.8000 | 33.1000 |" in table
+
+
+class TestBiologicalValidation:
+  """Tests for validate_biological_signatures."""
+
+  def test_validation_passes_on_simulation_results(self):
+    click_levels = [30.0, 40.0, 50.0, 60.0, 70.0, 80.0]
+    abr_results = {
+      "Control": [0.0128, 0.1282, 1.3399, 10.7559, 51.5883, 67.5298],
+      "Synaptopathy-50": [0.0075, 0.0760, 0.7949, 6.1125, 28.1907, 35.5266],
+      "Synaptopathy-25": [0.0041, 0.0414, 0.4330, 3.2536, 14.6364, 18.2008],
+      "OHC-Loss": [0.0008, 0.0025, 0.0078, 0.0256, 0.1077, 0.8301],
+      "Mixed-Loss": [0.0004, 0.0012, 0.0039, 0.0128, 0.0547, 0.4261],
+    }
+    efr_levels = [40.0, 50.0, 60.0, 70.0, 80.0]
+    efr_results = {
+      "Control": [1.0298, 1.7108, 2.4846, 3.5882, 5.8168],
+      "Synaptopathy-50": [0.6961, 0.9871, 1.4827, 2.0362, 2.8883],
+      "Synaptopathy-25": [0.3820, 0.6320, 0.6988, 1.1799, 1.9063],
+      "OHC-Loss": [0.0036, 0.0362, 0.3421, 1.7567, 4.7608],
+      "Mixed-Loss": [0.0022, 0.0219, 0.2073, 1.0152, 2.5421],
+    }
+
+    val = validate_biological_signatures(
+      click_levels_db=click_levels,
+      abr_results=abr_results,
+      efr_levels_db=efr_levels,
+      efr_results=efr_results,
+    )
+
+    assert isinstance(val, BiologicalValidation)
+    assert val.synaptopathy_low_preserved is True
+    assert val.synaptopathy_high_scaled_50 is True
+    assert val.synaptopathy_high_scaled_25 is True
+    assert val.efr_suprathreshold_drop is True
+    assert val.ohc_threshold_shifted is True
+    assert val.ohc_compression_lost is True
+    assert val.mixed_loss_dual_deficit is True
+    assert val.all_passed is True
+
+  def test_validation_fails_on_unpreserved_synaptopathy(self):
+    click_levels = [40.0, 80.0]
+    abr_results = {
+      "Control": [0.1, 60.0],
+      "Synaptopathy-50": [0.01, 30.0],  # 0.01 < 0.3 * 0.1 -> fails
+    }
+    efr_levels = [80.0]
+    efr_results = {
+      "Control": [5.0],
+      "Synaptopathy-50": [2.5],
+    }
+    val = validate_biological_signatures(click_levels, abr_results, efr_levels, efr_results)
+    assert val.synaptopathy_low_preserved is False
+    assert val.all_passed is False
+
+
+class TestGenerateSimulationReport:
+  """Tests for generate_simulation_report."""
+
+  def test_generate_report_content_and_file(self, tmp_path: pathlib.Path):
+    click_levels = [40.0, 80.0]
+    abr_results = {
+      "Control": [0.1282, 67.5298],
+      "Synaptopathy-50": [0.0760, 35.5266],
+      "Synaptopathy-25": [0.0414, 18.2008],
+      "OHC-Loss": [0.0025, 0.8301],
+      "Mixed-Loss": [0.0012, 0.4261],
+    }
+    efr_levels = [40.0, 60.0, 80.0]
+    efr_results = {
+      "Control": [1.0298, 2.4846, 5.8168],
+      "Synaptopathy-50": [0.6961, 1.4827, 2.8883],
+      "Synaptopathy-25": [0.3820, 0.6988, 1.9063],
+      "OHC-Loss": [0.0036, 0.3421, 4.7608],
+      "Mixed-Loss": [0.0022, 0.2073, 2.5421],
+    }
+
+    report_path = tmp_path / "report.md"
+    content = generate_simulation_report(
+      click_levels_db=click_levels,
+      abr_results=abr_results,
+      efr_levels_db=efr_levels,
+      efr_results=efr_results,
+      output_path=report_path,
+    )
+
+    assert "# CARFAC Electrophysiology Cohort Simulation Report" in content
+    assert "Bharadwaj et al. 2022" in content
+    assert "Synaptopathy-50" in content
+    assert "ABR Wave-I Onset Amplitude" in content
+    assert "EFR Spectral Magnitude at 100 Hz" in content
+    assert "ALL CHECKS PASSED" in content
+
+    assert report_path.exists()
+    assert report_path.read_text(encoding="utf-8") == content

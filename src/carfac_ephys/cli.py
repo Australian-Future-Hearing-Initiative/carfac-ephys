@@ -68,6 +68,16 @@ def main(
     experiment.plot_efr_growth(efr_levels, efr_results, efr_fig_path)
     click.echo(f"Saved EFR growth figure to: {efr_fig_path}")
 
+    report_path = output_dir / "simulation_report.md"
+    experiment.generate_simulation_report(
+      click_levels_db=click_levels,
+      abr_results=abr_results,
+      efr_levels_db=efr_levels,
+      efr_results=efr_results,
+      output_path=report_path,
+    )
+    click.echo(f"Saved simulation report to: {report_path}")
+
 
 if __name__ == "__main__":
   main()
