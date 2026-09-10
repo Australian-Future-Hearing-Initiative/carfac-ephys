@@ -398,6 +398,19 @@ class TestBiologicalValidation:
     assert "ALL CHECKS PASSED" not in content
     assert "SOME CHECKS SKIPPED" in content
 
+  def test_report_failure_outranks_skipped_sibling(self):
+    # Synaptopathy-50 is far below the expected ratio and Synaptopathy-25 was not
+    # simulated; the combined criterion must report the failure, not the gap.
+    content = generate_simulation_report(
+      click_levels_db=[60.0, 80.0],
+      abr_results={"Control": [10.0, 67.5298], "Synaptopathy-50": [5.0, 10.0]},
+      efr_levels_db=[60.0, 80.0],
+      efr_results={"Control": [2.5, 5.8], "Synaptopathy-50": [1.5, 2.9]},
+    )
+
+    assert "Synaptopathy Suprathreshold Scaling (80 dB SPL)**: FAILED" in content
+    assert "SOME CHECKS FAILED" in content
+
 
 class TestGenerateSimulationReport:
   """Tests for generate_simulation_report."""
