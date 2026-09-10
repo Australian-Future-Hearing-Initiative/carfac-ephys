@@ -140,6 +140,7 @@ class Cohort(dict[str, CohortCondition]):
     return list(self.values())
 
   def __getitem__(self, key: str) -> CohortCondition:
+    """Returns condition by name, supporting Control alias."""
     str_key = str(key)
     if super().__contains__(str_key):
       return super().__getitem__(str_key)
@@ -151,6 +152,7 @@ class Cohort(dict[str, CohortCondition]):
     return super().__getitem__(str_key)
 
   def __contains__(self, key: object) -> bool:
+    """Checks condition membership by name, supporting Control alias."""
     if super().__contains__(key):
       return True
     # Support alias membership checks.
@@ -205,7 +207,7 @@ def simulate_abr_level_series(
   # Validate input parameters.
   if sample_rate <= 0:
     raise ValueError("sample_rate must be positive.")
-  if len(click_levels_db) == 0:
+  if not click_levels_db:
     raise ValueError("click_levels_db sequence cannot be empty.")
 
   # Resolve cohort specifications.
@@ -279,7 +281,7 @@ def simulate_efr_level_series(
     raise ValueError("fc_hz and fm_hz must be positive.")
   if fm_hz >= sample_rate / 2.0:
     raise ValueError("fm_hz must be below Nyquist frequency.")
-  if len(efr_levels_db) == 0:
+  if not efr_levels_db:
     raise ValueError("efr_levels_db sequence cannot be empty.")
 
   # Resolve cohort specifications.
@@ -409,12 +411,15 @@ COHORT_STYLES: dict[str, dict[str, Any]] = {
 }
 
 
-def plot_abr_growth(
-  click_levels_db: Sequence[float],
+def _plot_growth_curves(
+  levels_db: Sequence[float],
   results: Mapping[str, Sequence[float]],
   output_path: str | pathlib.Path,
+  xlabel: str,
+  ylabel: str,
+  title: str,
 ) -> pathlib.Path:
-  """Plots and saves ABR Wave-I input-output functions across cohort conditions."""
+  """Plots and saves cohort response growth curves across sound levels."""
   path = pathlib.Path(output_path)
   path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -428,7 +433,7 @@ def plot_abr_growth(
       {"color": "#555555", "marker": ".", "linestyle": "-", "label": name},
     )
     ax.plot(
-      click_levels_db,
+      levels_db,
       values,
       label=style["label"],
       color=style["color"],
@@ -439,17 +444,35 @@ def plot_abr_growth(
     )
 
   # Labeling and formatting.
-  ax.set_xlabel("Click Sound Level (dB SPL)", fontsize=11, fontweight="bold")
-  ax.set_ylabel("ABR Wave-I Onset Amplitude (spikes/s)", fontsize=11, fontweight="bold")
-  ax.set_title("ABR Wave-I Input-Output Growth Functions", fontsize=12, fontweight="bold")
+  ax.set_xlabel(xlabel, fontsize=11, fontweight="bold")
+  ax.set_ylabel(ylabel, fontsize=11, fontweight="bold")
+  ax.set_title(title, fontsize=12, fontweight="bold")
   ax.grid(True, linestyle="--", alpha=0.5)
   ax.legend(frameon=True, fontsize=9, loc="upper left")
 
+  # Render and save figure.
   fig.tight_layout()
   fig.savefig(path, dpi=300)
   plt.close(fig)
 
   return path
+
+
+def plot_abr_growth(
+  click_levels_db: Sequence[float],
+  results: Mapping[str, Sequence[float]],
+  output_path: str | pathlib.Path,
+) -> pathlib.Path:
+  """Plots and saves ABR Wave-I input-output functions across cohort conditions."""
+  # Render ABR Wave-I growth curves.
+  return _plot_growth_curves(
+    levels_db=click_levels_db,
+    results=results,
+    output_path=output_path,
+    xlabel="Click Sound Level (dB SPL)",
+    ylabel="ABR Wave-I Onset Amplitude (spikes/s)",
+    title="ABR Wave-I Input-Output Growth Functions",
+  )
 
 
 def plot_efr_growth(
@@ -458,38 +481,12 @@ def plot_efr_growth(
   output_path: str | pathlib.Path,
 ) -> pathlib.Path:
   """Plots and saves EFR spectral magnitude growth functions across conditions."""
-  path = pathlib.Path(output_path)
-  path.parent.mkdir(parents=True, exist_ok=True)
-
-  # Create figure.
-  fig, ax = plt.subplots(figsize=(8, 5.5), dpi=300)
-
-  # Plot each condition curve.
-  for name, values in results.items():
-    style = COHORT_STYLES.get(
-      name,
-      {"color": "#555555", "marker": ".", "linestyle": "-", "label": name},
-    )
-    ax.plot(
-      efr_levels_db,
-      values,
-      label=style["label"],
-      color=style["color"],
-      marker=style["marker"],
-      linestyle=style["linestyle"],
-      linewidth=2.0,
-      markersize=6.5,
-    )
-
-  # Labeling and formatting.
-  ax.set_xlabel("SAM Tone Sound Level (dB SPL)", fontsize=11, fontweight="bold")
-  ax.set_ylabel("EFR Spectral Magnitude at 100 Hz (spikes/s)", fontsize=11, fontweight="bold")
-  ax.set_title("Envelope Following Response (EFR) Growth Functions", fontsize=12, fontweight="bold")
-  ax.grid(True, linestyle="--", alpha=0.5)
-  ax.legend(frameon=True, fontsize=9, loc="upper left")
-
-  fig.tight_layout()
-  fig.savefig(path, dpi=300)
-  plt.close(fig)
-
-  return path
+  # Render EFR growth curves.
+  return _plot_growth_curves(
+    levels_db=efr_levels_db,
+    results=results,
+    output_path=output_path,
+    xlabel="SAM Tone Sound Level (dB SPL)",
+    ylabel="EFR Spectral Magnitude at 100 Hz (spikes/s)",
+    title="Envelope Following Response (EFR) Growth Functions",
+  )

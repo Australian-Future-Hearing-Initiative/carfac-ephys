@@ -58,14 +58,13 @@ def main(
 
   # Generate and save diagnostic figures if requested.
   if plot:
-    out_path = pathlib.Path(output_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    abr_fig_path = out_path / "abr_wave_i_growth.png"
+    abr_fig_path = output_dir / "abr_wave_i_growth.png"
     experiment.plot_abr_growth(click_levels, abr_results, abr_fig_path)
     click.echo(f"Saved ABR Wave-I growth figure to: {abr_fig_path}")
 
-    efr_fig_path = out_path / "efr_growth.png"
+    efr_fig_path = output_dir / "efr_growth.png"
     experiment.plot_efr_growth(efr_levels, efr_results, efr_fig_path)
     click.echo(f"Saved EFR growth figure to: {efr_fig_path}")
 
