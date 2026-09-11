@@ -728,6 +728,9 @@ def _simulated_threshold_shift_db(
   baseline: str,
 ) -> float | None:
   """Computes the exposed minus baseline threshold shift of the simulation."""
+  if baseline not in abr_results or condition not in abr_results:
+    return None
+
   # Express the microvolt threshold criterion in model units.
   try:
     scale_uv_per_au = fit_response_scale_uv_per_au(
@@ -738,8 +741,6 @@ def _simulated_threshold_shift_db(
   criterion_au = THRESHOLD_CRITERION_UV / scale_uv_per_au
 
   # Interpolate both thresholds; a missing crossing makes the shift unknown.
-  if baseline not in abr_results or condition not in abr_results:
-    return None
   baseline_db = estimate_threshold_db(click_levels_db, abr_results[baseline], criterion_au)
   exposed_db = estimate_threshold_db(click_levels_db, abr_results[condition], criterion_au)
   if baseline_db is None or exposed_db is None:
