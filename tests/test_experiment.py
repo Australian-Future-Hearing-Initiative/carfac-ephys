@@ -273,6 +273,11 @@ class TestCli:
     # echoes it verbatim, so it must not carry markdown markup.
     assert "Fitted scale factor" in result.output
     assert "**" not in result.output
+    # The quick sweep cannot bracket the threshold criterion, so that row is
+    # skipped while the 80 dB SPL ratio is still reported.
+    assert "Empirical comparison against Bharadwaj et al. (2022):" in result.output
+    assert "| Click ABR threshold shift (dB) | n/a |" in result.output
+    assert "Suprathreshold Wave-I post/pre ratio" in result.output
 
   def test_cli_quick_with_plot(self, tmp_path: pathlib.Path):
     runner = CliRunner()
@@ -288,12 +293,15 @@ class TestCli:
     assert result.exit_code == 0
     assert "Saved ABR Wave-I growth figure" in result.output
     assert "Saved EFR growth figure" in result.output
+    assert "Saved empirical comparison figure" in result.output
     assert "Saved simulation report" in result.output
     assert (tmp_path / "abr_wave_i_growth.png").exists()
     assert (tmp_path / "efr_growth.png").exists()
+    assert (tmp_path / "empirical_comparison.png").exists()
     assert (tmp_path / "simulation_report.md").exists()
     assert (tmp_path / "abr_wave_i_growth.png").stat().st_size > 0
     assert (tmp_path / "efr_growth.png").stat().st_size > 0
+    assert (tmp_path / "empirical_comparison.png").stat().st_size > 0
     assert (tmp_path / "simulation_report.md").stat().st_size > 0
 
     # The quick sweep omits the 30-50 dB SPL levels, so the threshold criteria
