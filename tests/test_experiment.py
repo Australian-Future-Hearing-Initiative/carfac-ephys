@@ -11,16 +11,22 @@ from carfac_ephys.cli import main
 from carfac_ephys.empirical import CLICK_FREQUENCY_HZ, load_chinchilla_abr_dataset
 from carfac_ephys.experiment import (
   DEFAULT_COHORT_CONDITIONS,
+  THRESHOLD_SHIFT_TOLERANCE_DB,
+  W1_RATIO_TOLERANCE,
   BiologicalValidation,
   Cohort,
   CohortCondition,
+  compare_to_empirical,
+  estimate_threshold_db,
   fit_response_scale_uv_per_au,
   format_ascii_table,
+  format_empirical_comparison_table,
   format_markdown_table,
   generate_simulation_report,
   get_default_cohort,
   plot_abr_growth,
   plot_efr_growth,
+  plot_empirical_comparison,
   simulate_abr_level_series,
   simulate_efr_level_series,
   validate_biological_signatures,
@@ -349,7 +355,8 @@ class TestBiologicalValidation:
     assert val.synaptopathy_high_scaled_50 is True
     assert val.synaptopathy_high_scaled_25 is True
     assert val.selective_low_level_spared is True
-    assert val.selective_high_attenuated is True
+    assert val.empirical_threshold_shift_matched is True
+    assert val.empirical_w1_ratio_matched is True
     assert val.efr_suprathreshold_drop is True
     assert val.ohc_threshold_shifted is True
     assert val.ohc_compression_lost is True
@@ -366,16 +373,16 @@ class TestBiologicalValidation:
     val = validate_biological_signatures(click_levels, collapsed_low, efr_levels, efr_results)
 
     assert val.selective_low_level_spared is False
-    assert val.selective_high_attenuated is True
+    assert val.empirical_w1_ratio_matched is True
     assert val.all_passed is False
 
     # Matching Control at 80 dB SPL means losing the LSR and half the MSR fibers
-    # cost nothing suprathreshold, which is not the expected attenuation.
+    # cost nothing suprathreshold, which the animal ratio of ~0.74 rules out.
     no_attenuation = {"Control": [0.1282, 67.5298], "Selective-Synaptopathy": [0.1238, 66.0000]}
     val = validate_biological_signatures(click_levels, no_attenuation, efr_levels, efr_results)
 
     assert val.selective_low_level_spared is True
-    assert val.selective_high_attenuated is False
+    assert val.empirical_w1_ratio_matched is False
     assert val.all_passed is False
 
   def test_validation_fails_on_unpreserved_synaptopathy(self):
@@ -481,7 +488,9 @@ class TestGenerateSimulationReport:
     assert "# CARFAC Electrophysiology Cohort Simulation Report" in content
     assert "Bharadwaj et al. 2022" in content
     assert "Synaptopathy-50" in content
-    assert "Selective LSR/MSR Suprathreshold Attenuation (80 dB SPL)**: PASSED" in content
+    assert "Suprathreshold Wave-I Attenuation vs Animals**: PASSED" in content
+    assert "## 5. Empirical Comparison with Animal Data" in content
+    assert "Animal (Bharadwaj et al. 2022)" in content
     assert "ABR Wave-I Onset Amplitude (AU)" in content
     assert "spikes/s" not in content
     assert "Fitted scale factor" in content
@@ -517,3 +526,112 @@ class TestFitResponseScale:
       efr_results={"Control": [1.0]},
     )
     assert "Scale factor unavailable" in content
+
+
+class TestEstimateThresholdDb:
+  """Tests for estimate_threshold_db."""
+
+  def test_interpolates_crossing_on_log_amplitude_axis(self):
+    # A decade of growth over 10 dB puts the half-decade criterion mid-segment.
+    threshold = estimate_threshold_db([50.0, 60.0], [1.0, 10.0], criterion=10.0**0.5)
+    assert threshold == pytest.approx(55.0)
+
+  def test_unordered_levels_give_the_same_threshold(self):
+    threshold = estimate_threshold_db([60.0, 50.0], [10.0, 1.0], criterion=10.0**0.5)
+    assert threshold == pytest.approx(55.0)
+
+  def test_criterion_outside_the_sweep_is_unresolved(self):
+    # Above every simulated response, and below the lowest one.
+    assert estimate_threshold_db([50.0, 60.0], [1.0, 10.0], criterion=100.0) is None
+    assert estimate_threshold_db([50.0, 60.0], [1.0, 10.0], criterion=0.5) is None
+
+  def test_zero_baseline_falls_back_to_linear_interpolation(self):
+    threshold = estimate_threshold_db([50.0, 60.0], [0.0, 2.0], criterion=1.0)
+    assert threshold == pytest.approx(55.0)
+
+  def test_invalid_inputs_are_rejected(self):
+    with pytest.raises(ValueError, match="criterion"):
+      estimate_threshold_db([50.0, 60.0], [1.0, 10.0], criterion=0.0)
+    with pytest.raises(ValueError, match="equally long"):
+      estimate_threshold_db([50.0, 60.0], [1.0], criterion=1.0)
+
+
+# Full-sweep simulation results, used as the reference for empirical comparison.
+FULL_SWEEP_CLICK_LEVELS = [30.0, 40.0, 50.0, 60.0, 70.0, 80.0]
+FULL_SWEEP_ABR_RESULTS = {
+  "Control": [0.0128, 0.1282, 1.3399, 10.7559, 51.5883, 67.5298],
+  "Selective-Synaptopathy": [0.0123, 0.1238, 1.2915, 10.0933, 35.3127, 46.6437],
+}
+
+
+class TestCompareToEmpirical:
+  """Tests for compare_to_empirical."""
+
+  def test_selective_cohort_matches_the_noise_exposed_animals(self):
+    dataset = load_chinchilla_abr_dataset()
+    comparison = compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS)
+
+    # Both animal reference values come straight from the chinchilla dataset.
+    assert comparison.animal_threshold_shift_db == pytest.approx(dataset.click_threshold_shift_db)
+    assert comparison.animal_w1_ratio == pytest.approx(dataset.wave_i_ratio())
+
+    # The simulated cohort preserves threshold and reproduces the attenuation.
+    assert comparison.simulated_threshold_shift_db == pytest.approx(0.23, abs=0.05)
+    assert comparison.simulated_w1_ratio == pytest.approx(46.6437 / 67.5298)
+    assert comparison.threshold_shift_matched is True
+    assert comparison.w1_ratio_matched is True
+
+  def test_threshold_elevation_beyond_tolerance_fails(self):
+    # Shift the exposed growth function far to the right of the baseline.
+    elevated = dict(FULL_SWEEP_ABR_RESULTS)
+    elevated["Selective-Synaptopathy"] = [0.0001, 0.0012, 0.0135, 0.1350, 4.5000, 46.6437]
+    comparison = compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, elevated)
+
+    shift = comparison.simulated_threshold_shift_db
+    assert shift is not None and shift > THRESHOLD_SHIFT_TOLERANCE_DB
+    assert comparison.threshold_shift_matched is False
+    assert comparison.w1_ratio_matched is True
+
+  def test_ratio_outside_the_animal_range_fails(self):
+    # Halve the suprathreshold response, well below the animal ratio.
+    attenuated = dict(FULL_SWEEP_ABR_RESULTS)
+    attenuated["Selective-Synaptopathy"] = [0.0123, 0.1238, 1.2915, 10.0933, 35.3127, 30.0]
+    comparison = compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, attenuated)
+
+    ratio = comparison.simulated_w1_ratio
+    assert ratio is not None
+    assert abs(ratio - comparison.animal_w1_ratio) > W1_RATIO_TOLERANCE
+    assert comparison.w1_ratio_matched is False
+
+  def test_quick_sweep_leaves_metrics_unresolved(self):
+    # The 60-80 dB SPL sweep never brackets the threshold criterion.
+    comparison = compare_to_empirical([60.0, 80.0], {"Control": [10.7559, 67.5298]})
+
+    assert comparison.simulated_threshold_shift_db is None
+    assert comparison.threshold_shift_matched is None
+    assert comparison.simulated_w1_ratio is None
+    assert comparison.w1_ratio_matched is None
+
+  def test_table_renders_values_and_unresolved_metrics(self):
+    resolved = format_empirical_comparison_table(
+      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS)
+    )
+    assert "Click ABR threshold shift (dB)" in resolved
+    assert "0.691" in resolved
+    assert "PASSED" in resolved
+
+    skipped = format_empirical_comparison_table(
+      compare_to_empirical([60.0, 80.0], {"Control": [10.7559, 67.5298]})
+    )
+    assert "n/a" in skipped
+    assert "SKIPPED" in skipped
+
+  def test_plot_empirical_comparison(self, tmp_path: pathlib.Path):
+    out = tmp_path / "empirical_comparison.png"
+    path = plot_empirical_comparison(
+      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS), out
+    )
+
+    assert path == out
+    assert out.exists()
+    assert out.stat().st_size > 1000

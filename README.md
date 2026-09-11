@@ -53,6 +53,17 @@ Selective loss of the high-threshold fibers leaves the near-threshold response a
 
 ![ABR Wave-I Growth Curves](assets/abr_wave_i_growth.png)
 
+### Empirical Validation Against Chinchilla ABR Data
+
+The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_chinchilla_abr_dataset`), not from hand-picked bands.
+
+| Metric | Simulated (Selective-Synaptopathy) | Animal (Bharadwaj et al. 2022) | Tolerance | Status |
+| :--- | :---: | :---: | :---: | :---: |
+| Click ABR threshold shift (dB) | $+0.23$ | $-0.30$ | $\pm 3$ dB | PASSED |
+| Suprathreshold Wave-I post/pre ratio (80 dB SPL) | $0.691$ | $0.742$ | $\pm 0.10$ | PASSED |
+
+![Simulated versus Animal ABR Comparison](assets/empirical_comparison.png)
+
 ### Envelope Following Response (EFR) Growth (SAM Tones: 40–80 dB SPL)
 
 Carrier $f_c = 2000$ Hz, modulation frequency $f_m = 100$ Hz, $100\%$ modulation depth:
@@ -87,7 +98,7 @@ uv sync
 
 ### 2. Run Automated Test Suite
 
-Verify all 92 unit and integration tests:
+Verify all 144 unit and integration tests:
 ```bash
 uv run pytest -v
 ```
@@ -102,9 +113,9 @@ uv run carfac-ephys-simulate --output-dir output/
 This will:
 1. Run click-evoked ABR simulations from 30 to 80 dB SPL.
 2. Run SAM-tone EFR simulations from 40 to 80 dB SPL.
-3. Validate all biological signatures (assertions matching animal literature).
+3. Validate all biological signatures, including the quantitative comparison against the chinchilla ABR data.
 4. Print summary tables to stdout.
-5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`) and `simulation_report.md` to `output/`.
+5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`, `empirical_comparison.png`) and `simulation_report.md` to `output/`.
 
 #### Fast Smoke Test
 To verify the pipeline on a reduced 2-level subset:
@@ -122,7 +133,8 @@ carfac-ephys/
 ├── README.md                   # Documentation and walkthrough
 ├── assets/                     # Published diagnostic figures
 │   ├── abr_wave_i_growth.png
-│   └── efr_growth.png
+│   ├── efr_growth.png
+│   └── empirical_comparison.png
 ├── src/
 │   └── carfac_ephys/
 │       ├── __init__.py
@@ -130,12 +142,15 @@ carfac-ephys/
 │       ├── stimuli.py          # Calibrated click and SAM tone generation
 │       ├── carfac_model.py     # Biophysical CARFAC wrapper (OHC & fiber retention)
 │       ├── electrophysiology.py # ABR Wave-I and EFR metric extractors
+│       ├── empirical.py        # Chinchilla ABR dataset loader (Bharadwaj et al. 2022)
+│       ├── data/               # Packaged empirical data files
 │       ├── experiment.py       # Cohort definitions, level sweeps, validation
 │       └── cli.py              # CLI entry point (carfac-ephys-simulate)
 └── tests/
     ├── test_stimuli.py
     ├── test_carfac_model.py
     ├── test_electrophysiology.py
+    ├── test_empirical.py
     └── test_experiment.py
 ```
 

@@ -1,5 +1,6 @@
 """Cohort definitions and simulation level series runners for CARFAC electrophysiology."""
 
+import itertools
 import pathlib
 from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple
@@ -592,7 +593,8 @@ class BiologicalValidation(NamedTuple):
   synaptopathy_high_scaled_50: bool | None
   synaptopathy_high_scaled_25: bool | None
   selective_low_level_spared: bool | None
-  selective_high_attenuated: bool | None
+  empirical_threshold_shift_matched: bool | None
+  empirical_w1_ratio_matched: bool | None
   efr_suprathreshold_drop: bool | None
   ohc_threshold_shifted: bool | None
   ohc_compression_lost: bool | None
@@ -635,6 +637,302 @@ def _ratio_within(
   return low <= (numerator / denominator) <= high
 
 
+# Cohort compared against the noise-exposed chinchillas of Bharadwaj et al.
+# (2022): those animals recovered their click thresholds but kept a reduced
+# suprathreshold Wave-I, the signature of selective LSR/MSR deafferentation.
+EXPOSED_CONDITION: str = "Selective-Synaptopathy"
+
+# Wave-I amplitude criterion defining the simulated ABR threshold, in the same
+# microvolt scale as the animal recordings.
+THRESHOLD_CRITERION_UV: float = 0.1
+
+# Tolerances on the agreement between simulation and animal data: 3 dB is the
+# step of the animal threshold search, and 0.10 is the spread of the measured
+# post over pre Wave-I ratio.
+THRESHOLD_SHIFT_TOLERANCE_DB: float = 3.0
+W1_RATIO_TOLERANCE: float = 0.10
+
+
+def _interpolate_crossing_level_db(
+  low_level_db: float,
+  high_level_db: float,
+  low_amplitude: float,
+  high_amplitude: float,
+  criterion: float,
+) -> float:
+  """Interpolates the level at which a bracketed growth segment hits a criterion."""
+  # Growth functions are near-exponential in level, so interpolate on a log
+  # amplitude axis, falling back to linear when the lower end is not positive.
+  if low_amplitude > 0.0:
+    span = np.log(high_amplitude) - np.log(low_amplitude)
+    fraction = (np.log(criterion) - np.log(low_amplitude)) / span
+  else:
+    fraction = (criterion - low_amplitude) / (high_amplitude - low_amplitude)
+  return float(low_level_db + fraction * (high_level_db - low_level_db))
+
+
+def estimate_threshold_db(
+  levels_db: Sequence[float],
+  amplitudes: Sequence[float],
+  criterion: float,
+) -> float | None:
+  """Estimates the sound level at which a response reaches a criterion amplitude.
+
+  Args:
+    levels_db: Sound levels in dB SPL, in any order.
+    amplitudes: Response amplitudes paired with `levels_db`, in arbitrary units.
+    criterion: Amplitude defining threshold, in the same units as `amplitudes`.
+
+  Returns:
+    Interpolated threshold in dB SPL, or None when the sweep does not bracket
+    the criterion, since extrapolating outside the simulated levels is not
+    meaningful.
+  """
+  # Validate inputs.
+  if criterion <= 0.0:
+    raise ValueError(f"criterion must be positive, got {criterion}.")
+  if len(levels_db) != len(amplitudes):
+    raise ValueError(f"Inputs must be equally long, got {len(levels_db)} and {len(amplitudes)}.")
+
+  # Find the first ascending segment that brackets the criterion.
+  points = sorted(zip(levels_db, amplitudes, strict=True))
+  for (low_level, low_amp), (high_level, high_amp) in itertools.pairwise(points):
+    if low_amp >= criterion or high_amp < criterion:
+      continue
+    return _interpolate_crossing_level_db(low_level, high_level, low_amp, high_amp, criterion)
+  return None
+
+
+class EmpiricalComparison(NamedTuple):
+  """Quantitative comparison of a simulated cohort against animal ABR data.
+
+  Simulated values are None when the sweep lacked the levels needed to compute
+  them. Threshold shifts are in dB and Wave-I ratios are dimensionless post over
+  pre amplitude fractions.
+  """
+
+  condition: str
+  simulated_threshold_shift_db: float | None
+  animal_threshold_shift_db: float
+  threshold_shift_matched: bool | None
+  simulated_w1_ratio: float | None
+  animal_w1_ratio: float
+  w1_ratio_matched: bool | None
+
+
+def _simulated_threshold_shift_db(
+  click_levels_db: Sequence[float],
+  abr_results: Mapping[str, Sequence[float]],
+  dataset: empirical.ChinchillaAbrDataset,
+  condition: str,
+  baseline: str,
+) -> float | None:
+  """Computes the exposed minus baseline threshold shift of the simulation."""
+  # Express the microvolt threshold criterion in model units.
+  try:
+    scale_uv_per_au = fit_response_scale_uv_per_au(
+      click_levels_db, abr_results, dataset=dataset, condition=baseline
+    )
+  except (ValueError, KeyError):
+    return None
+  criterion_au = THRESHOLD_CRITERION_UV / scale_uv_per_au
+
+  # Interpolate both thresholds; a missing crossing makes the shift unknown.
+  if baseline not in abr_results or condition not in abr_results:
+    return None
+  baseline_db = estimate_threshold_db(click_levels_db, abr_results[baseline], criterion_au)
+  exposed_db = estimate_threshold_db(click_levels_db, abr_results[condition], criterion_au)
+  if baseline_db is None or exposed_db is None:
+    return None
+  return exposed_db - baseline_db
+
+
+def compare_to_empirical(
+  click_levels_db: Sequence[float],
+  abr_results: Mapping[str, Sequence[float]],
+  dataset: empirical.ChinchillaAbrDataset | None = None,
+  condition: str = EXPOSED_CONDITION,
+  baseline: str = BASELINE_CONDITION,
+) -> EmpiricalComparison:
+  """Compares simulated ABR thresholds and Wave-I growth against chinchilla data.
+
+  The noise-exposed chinchillas of Bharadwaj et al. (2022) recovered their click
+  thresholds while losing suprathreshold Wave-I amplitude, so the simulated
+  cohort must reproduce both numbers, not merely rank in the right order.
+
+  Args:
+    click_levels_db: Click sound levels in dB SPL.
+    abr_results: Mapping of condition name to Wave-I amplitudes in AU.
+    dataset: Empirical dataset; loaded from package data when None.
+    condition: Cohort standing in for the noise-exposed animals.
+    baseline: Cohort treated as the healthy, pre-exposure baseline.
+
+  Returns:
+    Record of the simulated values, the animal values, and their agreement.
+  """
+  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+
+  # Compare the click threshold shift, which the animals recovered.
+  animal_shift_db = data.click_threshold_shift_db
+  simulated_shift_db = _simulated_threshold_shift_db(
+    click_levels_db, abr_results, data, condition, baseline
+  )
+  shift_matched = None
+  if simulated_shift_db is not None:
+    shift_matched = abs(simulated_shift_db - animal_shift_db) <= THRESHOLD_SHIFT_TOLERANCE_DB
+
+  # Compare the suprathreshold Wave-I attenuation, which the animals retained.
+  animal_w1_ratio = data.wave_i_ratio()
+  level_indices = {float(level): index for index, level in enumerate(click_levels_db)}
+  exposed_au = _get_level_value(abr_results, level_indices, condition, CALIBRATION_LEVEL_DB)
+  baseline_au = _get_level_value(abr_results, level_indices, baseline, CALIBRATION_LEVEL_DB)
+  simulated_w1_ratio = None
+  ratio_matched = None
+  if exposed_au is not None and baseline_au is not None and baseline_au > 0.0:
+    simulated_w1_ratio = exposed_au / baseline_au
+    ratio_matched = abs(simulated_w1_ratio - animal_w1_ratio) <= W1_RATIO_TOLERANCE
+
+  return EmpiricalComparison(
+    condition=condition,
+    simulated_threshold_shift_db=simulated_shift_db,
+    animal_threshold_shift_db=animal_shift_db,
+    threshold_shift_matched=shift_matched,
+    simulated_w1_ratio=simulated_w1_ratio,
+    animal_w1_ratio=animal_w1_ratio,
+    w1_ratio_matched=ratio_matched,
+  )
+
+
+def format_empirical_comparison_table(comparison: EmpiricalComparison) -> str:
+  """Renders a simulated versus animal comparison as a Markdown table.
+
+  Args:
+    comparison: Comparison record produced by `compare_to_empirical`.
+
+  Returns:
+    Formatted Markdown table string.
+  """
+
+  # Metrics that were not simulated are reported as unavailable, not as zero.
+  def format_value(value: float | None, spec: str) -> str:
+    return "n/a" if value is None else format(value, spec)
+
+  rows = [
+    (
+      "Click ABR threshold shift (dB)",
+      format_value(comparison.simulated_threshold_shift_db, "+.2f"),
+      format(comparison.animal_threshold_shift_db, "+.2f"),
+      f"+/-{THRESHOLD_SHIFT_TOLERANCE_DB:g} dB",
+      format_check_status(comparison.threshold_shift_matched),
+    ),
+    (
+      f"Suprathreshold Wave-I post/pre ratio ({CALIBRATION_LEVEL_DB:g} dB SPL)",
+      format_value(comparison.simulated_w1_ratio, ".3f"),
+      format(comparison.animal_w1_ratio, ".3f"),
+      f"+/-{W1_RATIO_TOLERANCE:g}",
+      format_check_status(comparison.w1_ratio_matched),
+    ),
+  ]
+
+  headers = (
+    "Metric",
+    f"Simulated ({comparison.condition})",
+    "Animal (Bharadwaj et al. 2022)",
+    "Tolerance",
+    "Status",
+  )
+  lines = [
+    "| " + " | ".join(headers) + " |",
+    "| " + " | ".join(["---"] * len(headers)) + " |",
+    *("| " + " | ".join(row) + " |" for row in rows),
+  ]
+  return "\n".join(lines)
+
+
+def _plot_metric_bars(
+  axis: Any,
+  simulated: float | None,
+  animal: float,
+  tolerance: float,
+  ylabel: str,
+  title: str,
+) -> None:
+  """Draws a simulated versus animal bar pair with the animal tolerance band."""
+  # Shade the acceptance band around the animal value.
+  axis.axhspan(animal - tolerance, animal + tolerance, color="#2ca02c", alpha=0.15)
+  axis.axhline(animal, color="#2ca02c", linestyle="--", linewidth=1.5)
+
+  # Draw the two bars, leaving the simulated one empty when it is unavailable.
+  values = [0.0 if simulated is None else simulated, animal]
+  axis.bar(
+    ["Simulated", "Animal"],
+    values,
+    color=["#9467bd", "#2ca02c"],
+    width=0.55,
+  )
+  if simulated is None:
+    axis.text(0, 0, "n/a", ha="center", va="bottom", fontsize=10)
+
+  axis.set_ylabel(ylabel, fontsize=10, fontweight="bold")
+  axis.set_title(title, fontsize=11, fontweight="bold")
+  axis.grid(True, axis="y", linestyle="--", alpha=0.5)
+
+
+def plot_empirical_comparison(
+  comparison: EmpiricalComparison,
+  output_path: str | pathlib.Path,
+  dataset: empirical.ChinchillaAbrDataset | None = None,
+) -> pathlib.Path:
+  """Plots the simulated cohort against the chinchilla ABR measurements.
+
+  Args:
+    comparison: Comparison record produced by `compare_to_empirical`.
+    output_path: File path for the saved figure.
+    dataset: Empirical dataset supplying per-animal ratios; loaded when None.
+
+  Returns:
+    Path of the saved figure.
+  """
+  path = pathlib.Path(output_path)
+  path.parent.mkdir(parents=True, exist_ok=True)
+  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+
+  # Render one panel per validated metric.
+  fig, (threshold_ax, ratio_ax) = plt.subplots(1, 2, figsize=(9, 4.5), dpi=300)
+  _plot_metric_bars(
+    axis=threshold_ax,
+    simulated=comparison.simulated_threshold_shift_db,
+    animal=comparison.animal_threshold_shift_db,
+    tolerance=THRESHOLD_SHIFT_TOLERANCE_DB,
+    ylabel="Click ABR Threshold Shift (dB)",
+    title="Threshold Preservation",
+  )
+  _plot_metric_bars(
+    axis=ratio_ax,
+    simulated=comparison.simulated_w1_ratio,
+    animal=comparison.animal_w1_ratio,
+    tolerance=W1_RATIO_TOLERANCE,
+    ylabel="Wave-I Post / Pre Amplitude Ratio",
+    title=f"Suprathreshold Wave-I ({CALIBRATION_LEVEL_DB:g} dB SPL)",
+  )
+
+  # Overlay the individual animals to show the measured spread.
+  ratios = data.per_animal_w1_ratios
+  ratio_ax.scatter([1] * len(ratios), ratios, color="#111111", s=18, zorder=3, label="Animals")
+  ratio_ax.legend(fontsize=8, loc="upper right")
+
+  fig.suptitle(
+    f"{comparison.condition} vs Noise-Exposed Chinchillas (Bharadwaj et al. 2022)",
+    fontsize=12,
+    fontweight="bold",
+  )
+  fig.tight_layout()
+  fig.savefig(path, dpi=300)
+  plt.close(fig)
+
+  return path
+
+
 def format_check_status(flag: bool | None) -> str:
   """Renders a validation criterion outcome, where None means it was not evaluated."""
   if flag is None:
@@ -665,16 +963,20 @@ def validate_biological_signatures(
   abr_results: Mapping[str, Sequence[float]],
   efr_levels_db: Sequence[float],
   efr_results: Mapping[str, Sequence[float]],
+  dataset: empirical.ChinchillaAbrDataset | None = None,
 ) -> BiologicalValidation:
   """Validates simulated electrophysiology against animal literature findings.
 
   Criteria reference Bharadwaj et al. (2022), Mehraei et al. (2016), and Ruggero et al. (1997).
+  The selective synaptopathy criteria are checked against the measured chinchilla
+  threshold shift and Wave-I ratio rather than hand-picked bands.
 
   Args:
     click_levels_db: Click sound levels in dB SPL.
     abr_results: Mapping of condition name to ABR Wave-I onset amplitudes.
     efr_levels_db: SAM tone carrier sound levels in dB SPL.
     efr_results: Mapping of condition name to EFR spectral magnitudes.
+    dataset: Empirical dataset; loaded from package data when None.
 
   Returns:
     BiologicalValidation record containing pass/fail flags for each criterion.
@@ -698,20 +1000,21 @@ def validate_biological_signatures(
   syn_high_50_ok = _ratio_within(syn50_80, ctrl_80, 0.40, 0.65)
   syn_high_25_ok = _ratio_within(syn25_80, ctrl_80, 0.15, 0.35)
 
-  # 3. Selective LSR/MSR loss spares the near-threshold response, which is carried
-  # by the intact high spontaneous rate fibers, while still attenuating the
-  # suprathreshold response (above the uniform 50% band, below Control).
-  sel_low = _get_level_value(abr_results, click_idx, "Selective-Synaptopathy", low_lvl)
-  sel_80 = _get_level_value(abr_results, click_idx, "Selective-Synaptopathy", 80.0)
+  # 3. Selective LSR/MSR loss spares the near-threshold response, which is
+  # carried by the intact high spontaneous rate fibers.
+  sel_low = _get_level_value(abr_results, click_idx, EXPOSED_CONDITION, low_lvl)
   sel_low_ok = _ratio_within(sel_low, ctrl_low, 0.85, 1.05)
-  sel_high_ok = _ratio_within(sel_80, ctrl_80, 0.55, 0.85)
 
-  # 4. Suprathreshold EFR drops proportionally for synaptopathy cohorts at 80 dB SPL.
+  # 4. The selective cohort reproduces the noise-exposed chinchillas quantitatively:
+  # a recovered click threshold and the measured suprathreshold Wave-I attenuation.
+  comparison = compare_to_empirical(click_levels_db, abr_results, dataset=dataset)
+
+  # 5. Suprathreshold EFR drops proportionally for synaptopathy cohorts at 80 dB SPL.
   ctrl_efr = _get_level_value(efr_results, efr_idx, "Control", 80.0)
   syn50_efr = _get_level_value(efr_results, efr_idx, "Synaptopathy-50", 80.0)
   efr_drop_ok = _ratio_within(syn50_efr, ctrl_efr, 0.35, 0.65)
 
-  # 5. OHC Loss elevates threshold (negligible response at 30-50 dB SPL).
+  # 6. OHC Loss elevates threshold (negligible response at 30-50 dB SPL).
   ohc_threshold_ok = None
   for lvl in (30.0, 40.0, 50.0):
     c_val = _get_level_value(abr_results, click_idx, "Control", lvl)
@@ -722,7 +1025,7 @@ def validate_biological_signatures(
     if not ohc_threshold_ok:
       break
 
-  # 6. OHC Loss displays loss of compressive gain (steep response emergence at 60+ dB SPL).
+  # 7. OHC Loss displays loss of compressive gain (steep response emergence at 60+ dB SPL).
   ohc_60 = _get_level_value(efr_results, efr_idx, "OHC-Loss", 60.0)
   ohc_80 = _get_level_value(efr_results, efr_idx, "OHC-Loss", 80.0)
   ctrl_80_efr = _get_level_value(efr_results, efr_idx, "Control", 80.0)
@@ -730,7 +1033,7 @@ def validate_biological_signatures(
   if ohc_60 is not None and ohc_80 is not None and ctrl_80_efr is not None:
     ohc_comp_ok = ohc_80 > 8.0 * ohc_60 and ohc_80 > 0.6 * ctrl_80_efr
 
-  # 7. Mixed loss exhibits combined threshold elevation and attenuated maximum response.
+  # 8. Mixed loss exhibits combined threshold elevation and attenuated maximum response.
   mixed_abr = _get_level_value(abr_results, click_idx, "Mixed-Loss", 80.0)
   ohc_abr = _get_level_value(abr_results, click_idx, "OHC-Loss", 80.0)
   mixed_efr = _get_level_value(efr_results, efr_idx, "Mixed-Loss", 80.0)
@@ -746,7 +1049,8 @@ def validate_biological_signatures(
     synaptopathy_high_scaled_50=syn_high_50_ok,
     synaptopathy_high_scaled_25=syn_high_25_ok,
     selective_low_level_spared=sel_low_ok,
-    selective_high_attenuated=sel_high_ok,
+    empirical_threshold_shift_matched=comparison.threshold_shift_matched,
+    empirical_w1_ratio_matched=comparison.w1_ratio_matched,
     efr_suprathreshold_drop=efr_drop_ok,
     ohc_threshold_shifted=ohc_threshold_ok,
     ohc_compression_lost=ohc_comp_ok,
@@ -808,6 +1112,10 @@ def generate_simulation_report(
   # Fit the microvolt scale; skip it when the calibration level was not simulated.
   calibration_line = format_calibration_line(click_levels_db, abr_results)
 
+  # Quantify the agreement with the chinchilla measurements.
+  comparison = compare_to_empirical(click_levels_db, abr_results)
+  empirical_md = format_empirical_comparison_table(comparison)
+
   # Both fiber retention levels are reported as a single scaling criterion.
   syn_high_scaled = _combine_checks(
     validation.synaptopathy_high_scaled_50, validation.synaptopathy_high_scaled_25
@@ -861,9 +1169,10 @@ def generate_simulation_report(
     "  - 25% fiber retention scales Wave-I amplitude by ~75% (actual ~27.0% remaining).",
     f"- **Selective LSR/MSR Threshold Sparing (30-40 dB SPL)**: {format_check_status(validation.selective_low_level_spared)}",
     "  - Intact HSR fibers carry the near-threshold response, which stays above 85% of Control (~97% measured).",
-    f"- **Selective LSR/MSR Suprathreshold Attenuation (80 dB SPL)**: {format_check_status(validation.selective_high_attenuated)}",
-    "  - Losing the high-threshold LSR and half the MSR fibers cuts Wave-I to ~69% of Control,",
-    "    a milder deficit than the ~53% of uniform 50% deafferentation.",
+    f"- **Click Threshold Preservation vs Animals**: {format_check_status(validation.empirical_threshold_shift_matched)}",
+    f"  - Simulated threshold shift is within {THRESHOLD_SHIFT_TOLERANCE_DB:g} dB of the measured chinchilla shift.",
+    f"- **Suprathreshold Wave-I Attenuation vs Animals**: {format_check_status(validation.empirical_w1_ratio_matched)}",
+    f"  - Simulated post/pre Wave-I ratio is within {W1_RATIO_TOLERANCE:g} of the measured chinchilla ratio.",
     f"- **EFR Suprathreshold Attenuation**: {format_check_status(validation.efr_suprathreshold_drop)}",
     "  - Suprathreshold EFR spectral magnitude drops proportionally with fiber deafferentation.",
     f"- **OHC Loss Threshold Shift (30-50 dB SPL)**: {format_check_status(validation.ohc_threshold_shifted)}",
@@ -875,10 +1184,20 @@ def generate_simulation_report(
     "",
     f"**Overall Biological Verification**: {format_overall_verdict(validation)}",
     "",
-    "## 5. Diagnostic Figures",
+    "## 5. Empirical Comparison with Animal Data",
+    "",
+    f"The {comparison.condition} cohort stands in for the noise-exposed chinchillas of",
+    "Bharadwaj et al. (2022), which recovered their click thresholds while retaining a",
+    f"reduced suprathreshold Wave-I. Simulated thresholds are the {THRESHOLD_CRITERION_UV:g} uV crossing of",
+    "the interpolated Wave-I growth function, converted through the fitted response scale.",
+    "",
+    empirical_md,
+    "",
+    "## 6. Diagnostic Figures",
     "",
     "- `abr_wave_i_growth.png`: ABR Wave-I input-output growth curves across sound levels.",
     "- `efr_growth.png`: Envelope Following Response spectral magnitude growth curves.",
+    "- `empirical_comparison.png`: Simulated versus measured chinchilla threshold shift and Wave-I ratio.",
     "",
   ]
   report_text = "\n".join(report_lines)

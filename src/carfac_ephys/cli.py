@@ -59,6 +59,11 @@ def main(
   # Report the fitted conversion from arbitrary units to microvolts.
   click.echo(experiment.format_calibration_line(click_levels, abr_results) + "\n")
 
+  # Quantify the agreement with the chinchilla ABR measurements.
+  comparison = experiment.compare_to_empirical(click_levels, abr_results)
+  click.echo("Empirical comparison against Bharadwaj et al. (2022):")
+  click.echo(experiment.format_empirical_comparison_table(comparison) + "\n")
+
   # Generate and save diagnostic figures if requested.
   if plot:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -70,6 +75,10 @@ def main(
     efr_fig_path = output_dir / "efr_growth.png"
     experiment.plot_efr_growth(efr_levels, efr_results, efr_fig_path)
     click.echo(f"Saved EFR growth figure to: {efr_fig_path}")
+
+    empirical_fig_path = output_dir / "empirical_comparison.png"
+    experiment.plot_empirical_comparison(comparison, empirical_fig_path)
+    click.echo(f"Saved empirical comparison figure to: {empirical_fig_path}")
 
     report_path = output_dir / "simulation_report.md"
     experiment.generate_simulation_report(
