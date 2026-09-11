@@ -356,18 +356,26 @@ class TestBiologicalValidation:
     assert val.mixed_loss_dual_deficit is True
     assert val.all_passed is True
 
-  def test_selective_synaptopathy_must_spare_near_threshold_response(self):
+  def test_selective_synaptopathy_criteria_fail_independently(self):
+    click_levels = [40.0, 80.0]
+    efr_levels, efr_results = [80.0], {"Control": [5.8]}
+
     # Sparing HSR fibers only matters if the low-level response survives; a
     # selective cohort that collapses near threshold is not selective.
-    click_levels = [40.0, 80.0]
-    abr_results = {
-      "Control": [0.1282, 67.5298],
-      "Selective-Synaptopathy": [0.0500, 46.6437],
-    }
-    val = validate_biological_signatures(click_levels, abr_results, [80.0], {"Control": [5.8]})
+    collapsed_low = {"Control": [0.1282, 67.5298], "Selective-Synaptopathy": [0.0500, 46.6437]}
+    val = validate_biological_signatures(click_levels, collapsed_low, efr_levels, efr_results)
 
     assert val.selective_low_level_spared is False
     assert val.selective_high_attenuated is True
+    assert val.all_passed is False
+
+    # Matching Control at 80 dB SPL means losing the LSR and half the MSR fibers
+    # cost nothing suprathreshold, which is not the expected attenuation.
+    no_attenuation = {"Control": [0.1282, 67.5298], "Selective-Synaptopathy": [0.1238, 66.0000]}
+    val = validate_biological_signatures(click_levels, no_attenuation, efr_levels, efr_results)
+
+    assert val.selective_low_level_spared is True
+    assert val.selective_high_attenuated is False
     assert val.all_passed is False
 
   def test_validation_fails_on_unpreserved_synaptopathy(self):
