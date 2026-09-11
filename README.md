@@ -20,13 +20,73 @@ In animal hearing loss studies, controlled cochlear pathologies produce distinct
 3. **Mixed Pathology**:
    - **Animal Hallmark:** Combined threshold elevation and reduced suprathreshold response ceiling.
 
-`carfac-ephys` reproduces these physiological responses by systematically manipulating CARFAC's biophysical parameters:
-- `ohc_health` $\in [0, 1]$: Scales outer hair cell motility and active basilar membrane undamping.
-- `fiber_retention` $\in [0, 1]$: Scales auditory nerve fiber counts across spontaneous rate groups (HSR, MSR, LSR).
+---
+
+## 2. How the Synthetic Model Replicates Animal Data
+
+The core objective of `carfac-ephys` is reproducing the empirical electrophysiological findings of animal synaptopathy studies (specifically **Bharadwaj et al. 2022**, *Commun Biol*, investigating noise-exposed chinchillas) using the CARFAC biophysical cochlear model.
+
+### 2.1 The Animal Experiment Being Replicated
+
+In the Bharadwaj et al. (2022) chinchilla study:
+1. **Noise Exposure**: Chinchillas were exposed to an acoustic overexposure that induced temporary threshold shifts (TTS).
+2. **Permanent Synaptopathy with Intact Hair Cells**: After 2 weeks, outer hair cells fully recovered (confirmed by normal audiometric thresholds and DPOAEs), but auditory nerve ribbon synapses suffered permanent loss. Crucially, noise damage preferentially destroys low- and medium-spontaneous-rate (LSR/MSR) fibers while sparing high-spontaneous-rate (HSR) fibers.
+3. **Electrophysiological Hallmarks**:
+   - **Thresholds Preserved**: Click ABR threshold shift was negligible ($-0.30$ dB measured).
+   - **Suprathreshold Wave-I Reduced**: At 80 dB SPL, ABR Wave-I amplitude dropped to $74.2\%$ of pre-exposure baseline ($25.8\%$ attenuation).
+
+### 2.2 In Silico Simulation Pipeline
+
+The synthetic pipeline bridges acoustic input to simulated electrophysiology through CARFAC:
+
+```text
+Acoustic Stimulus (Clicks / SAM Tones)
+       │
+       ▼
+CARFAC Cochlear Resonators (Basilar Membrane Filterbank)
+       │  [Modulated by ohc_health: active nonlinear gain]
+       ▼
+Inner Hair Cell Synapse Model (Two-Capacitor Reservoir)
+       │  [Modulated by fiber_retention: HSR, MSR, LSR counts]
+       ▼
+Neural Activity Patterns: naps(t, channel)
+       │
+       ▼  Population Rate Summation: r(t) = Σ_c naps(t, c)
+Compound Action Potential (CAP) Waveform
+       │
+       ▼  Wave-I Peak Extraction: max r(t) - baseline (0–8 ms window)
+Simulated Response (Arbitrary Units, AU)
+       │
+       ▼  Scale Factor: α = W1_animal_pre_80dB / Wave-I_sim_ctrl_80dB ≈ 0.0316 μV/AU
+Calibrated Electrophysiology (μV) & Threshold Interpolation (0.1 μV criterion)
+```
+
+### 2.3 Parameter Mapping: Biology to CARFAC
+
+To model the animal cohorts in silico, CARFAC parameters are configured as follows:
+
+| Cohort | Biological Pathology | `ohc_health` | `fiber_retention` `(HSR, MSR, LSR)` | Rationale |
+| :--- | :--- | :---: | :---: | :--- |
+| **Control** | Healthy baseline | `1.0` | `(1.0, 1.0, 1.0)` | Full OHC amplification and 100% nerve fibers. |
+| **Selective-Synaptopathy** | Noise-exposed animal model | `1.0` | `(1.0, 0.5, 0.0)` | Replicates noise synaptopathy: intact hair cells (`ohc=1.0`), spared sensitive HSR fibers (`100%`), and depleted MSR/LSR fibers (`50%` / `0%`). |
+| **Synaptopathy-50** | Uniform deafferentation | `1.0` | `0.5` `(0.5, 0.5, 0.5)` | Uniform 50% fiber loss across all spontaneous rate groups. |
+| **Synaptopathy-25** | Severe deafferentation | `1.0` | `0.25` `(0.25, 0.25, 0.25)` | Uniform 75% fiber loss across all spontaneous rate groups. |
+| **OHC-Loss** | Sensory hair cell loss | `0.4` | `(1.0, 1.0, 1.0)` | Basilar membrane undamping loss (20–30 dB threshold elevation). |
+| **Mixed-Loss** | Combined sensory & neural | `0.4` | `0.5` `(0.5, 0.5, 0.5)` | Combined OHC active gain loss and neural deafferentation. |
+
+### 2.4 Biophysical Mechanism: Why the Model Matches Animal Data
+
+1. **Near-Threshold Sparing ($30–40$ dB SPL)**:
+   - Near threshold, sound pressures only activate the most sensitive fibers: high-spontaneous-rate (HSR) fibers.
+   - Because `Selective-Synaptopathy` retains $100\%$ of HSR fibers, the simulated response near threshold is $96.5\%$ of Control (versus only $59.3\%$ for uniform deafferentation).
+   - As a result, the simulated click threshold shift is $+0.23$ dB, closely replicating the animal measurement ($-0.30$ dB, both effectively 0 dB).
+2. **Suprathreshold Attenuation ($70–80$ dB SPL)**:
+   - At high sound levels, HSR fibers saturate. Further growth in population firing rate requires recruitment of high-threshold, low- and medium-spontaneous-rate (LSR/MSR) fibers.
+   - Because MSR/LSR fibers are depleted ($50\%$ MSR, $0\%$ LSR), the suprathreshold growth plateaus early, yielding a simulated post/pre Wave-I ratio of $0.691$ at 80 dB SPL (matching the animal measurement of $0.742 \pm 0.10$).
 
 ---
 
-## 2. Experimental Findings
+## 3. Experimental Findings
 
 Simulated cohort responses across six representative conditions:
 - **Control**: Healthy cochlea ($100\%$ OHC health, $100\%$ AN fibers).
@@ -81,7 +141,7 @@ Carrier $f_c = 2000$ Hz, modulation frequency $f_m = 100$ Hz, $100\%$ modulation
 
 ---
 
-## 3. Reproduction Steps
+## 4. Reproduction Steps
 
 ### Prerequisites
 - Python $\ge 3.11$
@@ -125,7 +185,7 @@ uv run carfac-ephys-simulate --quick --output-dir output/
 
 ---
 
-## 4. Package Architecture
+## 5. Package Architecture
 
 ```text
 carfac-ephys/
@@ -156,7 +216,7 @@ carfac-ephys/
 
 ---
 
-## 5. References
+## 6. References
 
 - **Bharadwaj HM, Hustedt-Mai AR, Ginsberg HM, et al.** (2022). *Cross-species experiments reveal widespread cochlear neural damage in normal hearing.* Communications Biology, 5(1), 733. [doi:10.1038/s42003-022-03691-4](https://doi.org/10.1038/s42003-022-03691-4).
 - **Mehraei G, Hickox AE, Bharadwaj HM, et al.** (2016). *Auditory Brainstem Response Latency in Noise as a Marker of Cochlear Synaptopathy.* Journal of Neuroscience, 36(13), 3755–3764. [doi:10.1523/JNEUROSCI.4460-15.2016](https://doi.org/10.1523/JNEUROSCI.4460-15.2016).
