@@ -28,10 +28,11 @@ In animal hearing loss studies, controlled cochlear pathologies produce distinct
 
 ## 2. Experimental Findings
 
-Simulated cohort responses across five representative conditions:
+Simulated cohort responses across six representative conditions:
 - **Control**: Healthy cochlea ($100\%$ OHC health, $100\%$ AN fibers).
 - **Synaptopathy-50**: Moderate synaptopathy ($100\%$ OHC health, $50\%$ AN fibers).
 - **Synaptopathy-25**: Severe synaptopathy ($100\%$ OHC health, $25\%$ AN fibers).
+- **Selective-Synaptopathy**: Selective loss of high-threshold fibers ($100\%$ OHC health, $100\%$ HSR, $50\%$ MSR, $0\%$ LSR).
 - **OHC-Loss**: Sensory hearing loss ($40\%$ OHC health, $100\%$ AN fibers).
 - **Mixed-Loss**: Combined pathology ($40\%$ OHC health, $50\%$ AN fibers).
 
@@ -44,8 +45,11 @@ Responses are in arbitrary units (AU): CARFAC neural activity patterns are dimen
 | **Control** | 0.0128 | 0.1282 | 1.3399 | 10.7559 | 51.5883 | **67.5298** |
 | **Synaptopathy-50** | 0.0075 | 0.0760 | 0.7949 | 6.1125 | 28.1907 | **35.5266** *(52.6% of Control)* |
 | **Synaptopathy-25** | 0.0041 | 0.0414 | 0.4330 | 3.2536 | 14.6364 | **18.2008** *(27.0% of Control)* |
+| **Selective-Synaptopathy** | 0.0123 | 0.1238 | 1.2915 | 10.0933 | 35.3127 | **46.6437** *(69.1% of Control)* |
 | **OHC-Loss** | 0.0008 | 0.0025 | 0.0078 | 0.0256 | 0.1077 | **0.8301** *(~30 dB threshold shift)* |
 | **Mixed-Loss** | 0.0004 | 0.0012 | 0.0039 | 0.0128 | 0.0547 | **0.4261** |
+
+Selective loss of the high-threshold fibers leaves the near-threshold response almost intact ($96.5\%$ of Control at 40 dB SPL, versus $59.3\%$ for uniform $50\%$ deafferentation) while still cutting the suprathreshold Wave-I to $69.1\%$ — the hidden-hearing-loss signature, and within the $0.74 \pm 0.10$ post/pre Wave-I ratio measured in noise-exposed chinchillas (Bharadwaj et al. 2022).
 
 ![ABR Wave-I Growth Curves](assets/abr_wave_i_growth.png)
 
@@ -58,6 +62,7 @@ Carrier $f_c = 2000$ Hz, modulation frequency $f_m = 100$ Hz, $100\%$ modulation
 | **Control** | 1.0718 | 1.7686 | 2.5543 | 3.6773 | **5.9665** |
 | **Synaptopathy-50** | 0.7172 | 1.0091 | 1.5053 | 2.0680 | **2.9614** *(49.6% of Control)* |
 | **Synaptopathy-25** | 0.3906 | 0.6391 | 0.7122 | 1.2044 | **1.9453** *(32.6% of Control)* |
+| **Selective-Synaptopathy** | 0.9641 | 1.3883 | 1.8917 | 2.9321 | **4.6401** *(77.8% of Control)* |
 | **OHC-Loss** | 0.0038 | 0.0382 | 0.3602 | 1.8413 | **4.9530** |
 | **Mixed-Loss** | 0.0023 | 0.0230 | 0.2180 | 1.0620 | **2.6369** |
 

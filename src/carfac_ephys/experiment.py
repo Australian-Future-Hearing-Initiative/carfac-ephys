@@ -42,6 +42,12 @@ DEFAULT_COHORT_CONDITIONS: tuple[CohortCondition, ...] = (
     description="75% auditory nerve deafferentation (100% OHC, 25% fibers)",
   ),
   CohortCondition(
+    name="Selective-Synaptopathy",
+    ohc_health=1.0,
+    fiber_retention=carfac_model.FiberRetention(hsr=1.0, msr=0.5, lsr=0.0),
+    description="Selective deafferentation (100% OHC, 100% HSR, 50% MSR, 0% LSR fibers)",
+  ),
+  CohortCondition(
     name="OHC-Loss",
     ohc_health=0.4,
     fiber_retention=1.0,
@@ -444,6 +450,12 @@ COHORT_STYLES: dict[str, dict[str, Any]] = {
     "linestyle": ":",
     "label": "Synaptopathy 25% (25% Fibers)",
   },
+  "Selective-Synaptopathy": {
+    "color": "#9467bd",
+    "marker": "v",
+    "linestyle": "--",
+    "label": "Selective Synaptopathy (100% HSR, 50% MSR, 0% LSR)",
+  },
   "OHC-Loss": {
     "color": "#d62728",
     "marker": "d",
@@ -579,6 +591,8 @@ class BiologicalValidation(NamedTuple):
   synaptopathy_low_preserved: bool | None
   synaptopathy_high_scaled_50: bool | None
   synaptopathy_high_scaled_25: bool | None
+  selective_low_level_spared: bool | None
+  selective_high_attenuated: bool | None
   efr_suprathreshold_drop: bool | None
   ohc_threshold_shifted: bool | None
   ohc_compression_lost: bool | None
@@ -684,12 +698,20 @@ def validate_biological_signatures(
   syn_high_50_ok = _ratio_within(syn50_80, ctrl_80, 0.40, 0.65)
   syn_high_25_ok = _ratio_within(syn25_80, ctrl_80, 0.15, 0.35)
 
-  # 3. Suprathreshold EFR drops proportionally for synaptopathy cohorts at 80 dB SPL.
+  # 3. Selective LSR/MSR loss spares the near-threshold response, which is carried
+  # by the intact high spontaneous rate fibers, while still attenuating the
+  # suprathreshold response (above the uniform 50% band, below Control).
+  sel_low = _get_level_value(abr_results, click_idx, "Selective-Synaptopathy", low_lvl)
+  sel_80 = _get_level_value(abr_results, click_idx, "Selective-Synaptopathy", 80.0)
+  sel_low_ok = _ratio_within(sel_low, ctrl_low, 0.85, 1.05)
+  sel_high_ok = _ratio_within(sel_80, ctrl_80, 0.55, 0.85)
+
+  # 4. Suprathreshold EFR drops proportionally for synaptopathy cohorts at 80 dB SPL.
   ctrl_efr = _get_level_value(efr_results, efr_idx, "Control", 80.0)
   syn50_efr = _get_level_value(efr_results, efr_idx, "Synaptopathy-50", 80.0)
   efr_drop_ok = _ratio_within(syn50_efr, ctrl_efr, 0.35, 0.65)
 
-  # 4. OHC Loss elevates threshold (negligible response at 30-50 dB SPL).
+  # 5. OHC Loss elevates threshold (negligible response at 30-50 dB SPL).
   ohc_threshold_ok = None
   for lvl in (30.0, 40.0, 50.0):
     c_val = _get_level_value(abr_results, click_idx, "Control", lvl)
@@ -700,7 +722,7 @@ def validate_biological_signatures(
     if not ohc_threshold_ok:
       break
 
-  # 5. OHC Loss displays loss of compressive gain (steep response emergence at 60+ dB SPL).
+  # 6. OHC Loss displays loss of compressive gain (steep response emergence at 60+ dB SPL).
   ohc_60 = _get_level_value(efr_results, efr_idx, "OHC-Loss", 60.0)
   ohc_80 = _get_level_value(efr_results, efr_idx, "OHC-Loss", 80.0)
   ctrl_80_efr = _get_level_value(efr_results, efr_idx, "Control", 80.0)
@@ -708,7 +730,7 @@ def validate_biological_signatures(
   if ohc_60 is not None and ohc_80 is not None and ctrl_80_efr is not None:
     ohc_comp_ok = ohc_80 > 8.0 * ohc_60 and ohc_80 > 0.6 * ctrl_80_efr
 
-  # 6. Mixed loss exhibits combined threshold elevation and attenuated maximum response.
+  # 7. Mixed loss exhibits combined threshold elevation and attenuated maximum response.
   mixed_abr = _get_level_value(abr_results, click_idx, "Mixed-Loss", 80.0)
   ohc_abr = _get_level_value(abr_results, click_idx, "OHC-Loss", 80.0)
   mixed_efr = _get_level_value(efr_results, efr_idx, "Mixed-Loss", 80.0)
@@ -723,6 +745,8 @@ def validate_biological_signatures(
     synaptopathy_low_preserved=syn_low_ok,
     synaptopathy_high_scaled_50=syn_high_50_ok,
     synaptopathy_high_scaled_25=syn_high_25_ok,
+    selective_low_level_spared=sel_low_ok,
+    selective_high_attenuated=sel_high_ok,
     efr_suprathreshold_drop=efr_drop_ok,
     ohc_threshold_shifted=ohc_threshold_ok,
     ohc_compression_lost=ohc_comp_ok,
@@ -804,6 +828,8 @@ def generate_simulation_report(
     "- **Control**: Healthy cochlea (100% outer hair cell health, 100% auditory nerve fibers).",
     "- **Synaptopathy-50**: Moderate auditory nerve deafferentation (100% OHC, 50% fibers).",
     "- **Synaptopathy-25**: Severe auditory nerve deafferentation (100% OHC, 25% fibers).",
+    "- **Selective-Synaptopathy**: Selective loss of low and medium spontaneous rate fibers",
+    "  (100% OHC, 100% HSR, 50% MSR, 0% LSR fibers).",
     "- **OHC-Loss**: Outer hair cell loss (40% OHC health, 100% fibers).",
     "- **Mixed-Loss**: Combined sensory and neural pathology (40% OHC health, 50% fibers).",
     "",
@@ -833,6 +859,11 @@ def generate_simulation_report(
     f"- **Synaptopathy Suprathreshold Scaling (80 dB SPL)**: {format_check_status(syn_high_scaled)}",
     "  - 50% fiber retention scales Wave-I amplitude by ~50% (actual ~52.6%).",
     "  - 25% fiber retention scales Wave-I amplitude by ~75% (actual ~27.0% remaining).",
+    f"- **Selective LSR/MSR Threshold Sparing (30-40 dB SPL)**: {format_check_status(validation.selective_low_level_spared)}",
+    "  - Intact HSR fibers carry the near-threshold response, which stays above 85% of Control (~97% measured).",
+    f"- **Selective LSR/MSR Suprathreshold Attenuation (80 dB SPL)**: {format_check_status(validation.selective_high_attenuated)}",
+    "  - Losing the high-threshold LSR and half the MSR fibers cuts Wave-I to ~69% of Control,",
+    "    a milder deficit than the ~53% of uniform 50% deafferentation.",
     f"- **EFR Suprathreshold Attenuation**: {format_check_status(validation.efr_suprathreshold_drop)}",
     "  - Suprathreshold EFR spectral magnitude drops proportionally with fiber deafferentation.",
     f"- **OHC Loss Threshold Shift (30-50 dB SPL)**: {format_check_status(validation.ohc_threshold_shifted)}",

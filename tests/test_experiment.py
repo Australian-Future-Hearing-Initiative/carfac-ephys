@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
+from carfac_ephys.carfac_model import FiberRetention
 from carfac_ephys.cli import main
 from carfac_ephys.empirical import CLICK_FREQUENCY_HZ, load_chinchilla_abr_dataset
 from carfac_ephys.experiment import (
@@ -30,12 +31,13 @@ class TestCohortDefinitions:
   """Tests for CohortCondition and Cohort collection initialization."""
 
   def test_default_cohort_conditions(self):
-    # Verify default 5 conditions and biophysical values.
+    # Verify default 6 conditions and biophysical values.
     cohort = Cohort()
-    assert len(cohort) == 5
+    assert len(cohort) == 6
     assert "Control" in cohort
     assert "Synaptopathy-50" in cohort
     assert "Synaptopathy-25" in cohort
+    assert "Selective-Synaptopathy" in cohort
     assert "OHC-Loss" in cohort
     assert "Mixed-Loss" in cohort
 
@@ -48,6 +50,11 @@ class TestCohortDefinitions:
 
     assert cohort["Synaptopathy-25"].ohc_health == 1.0
     assert cohort["Synaptopathy-25"].fiber_retention == 0.25
+
+    assert cohort["Selective-Synaptopathy"].ohc_health == 1.0
+    assert cohort["Selective-Synaptopathy"].fiber_retention == FiberRetention(
+      hsr=1.0, msr=0.5, lsr=0.0
+    )
 
     assert cohort["OHC-Loss"].ohc_health == 0.4
     assert cohort["OHC-Loss"].fiber_retention == 1.0
@@ -316,6 +323,7 @@ class TestBiologicalValidation:
       "Control": [0.0128, 0.1282, 1.3399, 10.7559, 51.5883, 67.5298],
       "Synaptopathy-50": [0.0075, 0.0760, 0.7949, 6.1125, 28.1907, 35.5266],
       "Synaptopathy-25": [0.0041, 0.0414, 0.4330, 3.2536, 14.6364, 18.2008],
+      "Selective-Synaptopathy": [0.0123, 0.1238, 1.2915, 10.0933, 35.3127, 46.6437],
       "OHC-Loss": [0.0008, 0.0025, 0.0078, 0.0256, 0.1077, 0.8301],
       "Mixed-Loss": [0.0004, 0.0012, 0.0039, 0.0128, 0.0547, 0.4261],
     }
@@ -324,6 +332,7 @@ class TestBiologicalValidation:
       "Control": [1.0298, 1.7108, 2.4846, 3.5882, 5.8168],
       "Synaptopathy-50": [0.6961, 0.9871, 1.4827, 2.0362, 2.8883],
       "Synaptopathy-25": [0.3820, 0.6320, 0.6988, 1.1799, 1.9063],
+      "Selective-Synaptopathy": [0.9641, 1.3883, 1.8917, 2.9321, 4.6401],
       "OHC-Loss": [0.0036, 0.0362, 0.3421, 1.7567, 4.7608],
       "Mixed-Loss": [0.0022, 0.0219, 0.2073, 1.0152, 2.5421],
     }
@@ -339,11 +348,27 @@ class TestBiologicalValidation:
     assert val.synaptopathy_low_preserved is True
     assert val.synaptopathy_high_scaled_50 is True
     assert val.synaptopathy_high_scaled_25 is True
+    assert val.selective_low_level_spared is True
+    assert val.selective_high_attenuated is True
     assert val.efr_suprathreshold_drop is True
     assert val.ohc_threshold_shifted is True
     assert val.ohc_compression_lost is True
     assert val.mixed_loss_dual_deficit is True
     assert val.all_passed is True
+
+  def test_selective_synaptopathy_must_spare_near_threshold_response(self):
+    # Sparing HSR fibers only matters if the low-level response survives; a
+    # selective cohort that collapses near threshold is not selective.
+    click_levels = [40.0, 80.0]
+    abr_results = {
+      "Control": [0.1282, 67.5298],
+      "Selective-Synaptopathy": [0.0500, 46.6437],
+    }
+    val = validate_biological_signatures(click_levels, abr_results, [80.0], {"Control": [5.8]})
+
+    assert val.selective_low_level_spared is False
+    assert val.selective_high_attenuated is True
+    assert val.all_passed is False
 
   def test_validation_fails_on_unpreserved_synaptopathy(self):
     click_levels = [40.0, 80.0]
@@ -382,6 +407,7 @@ class TestBiologicalValidation:
 
     assert val.synaptopathy_low_preserved is None
     assert val.ohc_threshold_shifted is None
+    assert val.selective_low_level_spared is None
     assert val.synaptopathy_high_scaled_50 is True
     assert val.any_skipped is True
     assert val.all_passed is True
@@ -421,6 +447,7 @@ class TestGenerateSimulationReport:
       "Control": [0.1282, 67.5298],
       "Synaptopathy-50": [0.0760, 35.5266],
       "Synaptopathy-25": [0.0414, 18.2008],
+      "Selective-Synaptopathy": [0.1238, 46.6437],
       "OHC-Loss": [0.0025, 0.8301],
       "Mixed-Loss": [0.0012, 0.4261],
     }
@@ -429,6 +456,7 @@ class TestGenerateSimulationReport:
       "Control": [1.0298, 2.4846, 5.8168],
       "Synaptopathy-50": [0.6961, 1.4827, 2.8883],
       "Synaptopathy-25": [0.3820, 0.6988, 1.9063],
+      "Selective-Synaptopathy": [0.9641, 1.8917, 4.6401],
       "OHC-Loss": [0.0036, 0.3421, 4.7608],
       "Mixed-Loss": [0.0022, 0.2073, 2.5421],
     }
@@ -445,6 +473,7 @@ class TestGenerateSimulationReport:
     assert "# CARFAC Electrophysiology Cohort Simulation Report" in content
     assert "Bharadwaj et al. 2022" in content
     assert "Synaptopathy-50" in content
+    assert "Selective LSR/MSR Suprathreshold Attenuation (80 dB SPL)**: PASSED" in content
     assert "ABR Wave-I Onset Amplitude (AU)" in content
     assert "spikes/s" not in content
     assert "Fitted scale factor" in content
