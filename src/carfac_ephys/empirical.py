@@ -15,6 +15,8 @@ import importlib.resources
 import json
 import pathlib
 from collections.abc import Sequence
+from typing import Protocol, runtime_checkable
+import abc
 
 # Directory holding the empirical data files shipped as package data. Resolved
 # through importlib.resources so it also works from an installed wheel; assumes
@@ -22,9 +24,11 @@ from collections.abc import Sequence
 DEFAULT_DATA_DIR: pathlib.Path = pathlib.Path(str(importlib.resources.files(__package__))) / "data"
 
 # File names of the empirical data files within the data directory.
-SUMMARY_FILE_NAME: str = "chinchilla_abr_summary.json"
-PER_ANIMAL_FILE_NAME: str = "chinABR_HighLevel_uV_4k_8k_ave.csv"
+CHINCHILLA_SUMMARY_FILE_NAME: str = "chinchilla_abr_summary.json"
+CHINCHILLA_PER_ANIMAL_FILE_NAME: str = "chinABR_HighLevel_uV_4k_8k_ave.csv"
 
+HUMAN_SUMMARY_FILE_NAME = "human_abr_summary.json"
+HUMAN_PER_SUBJECT_FILE_NAME = "human_abr_per_subject.csv"
 # Frequency key used for the broadband click condition.
 CLICK_FREQUENCY_HZ: float = 0.0
 
@@ -89,6 +93,138 @@ class AnimalWaveAmplitudes:
     """Post over pre Wave-V amplitude ratio."""
     return _post_pre_ratio(self.post_w5_uv, self.pre_w5_uv, f"pre_w5_uv of {self.animal_id}")
 
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Generic protocol — any dataset (chinchilla, human, …) must satisfy this.
+# ──────────────────────────────────────────────────────────────────────────────
+
+@runtime_checkable
+class AbrDataset(Protocol):
+    """Minimal interface required by experiment.py validation and comparison."""
+
+    source: str
+    """Citation of the originating publication."""
+
+    @property
+    def click_threshold_shift_db(self) -> float:
+        """Post minus pre click ABR threshold shift in dB."""
+        ...
+
+    def wave_i_ratio(self, frequency_hz: float = ...) -> float:
+        """Post over pre high-level Wave-I amplitude ratio."""
+        ...
+
+    @property
+    def per_animal_w1_ratios(self) -> tuple[float, ...]:
+        """Post over pre Wave-I ratio for each subject (animal or human)."""
+        ...
+
+
+
+@dataclasses.dataclass(frozen=True)
+class HumanAbrDataset:
+    """Human ABR dataset from electrophysiological studies in normal-hearing listeners.
+
+    Follows the same interface as ``ChinchillaAbrDataset`` so it can be passed
+    anywhere a generic ``AbrDataset`` is accepted.
+
+    Attributes:
+        source: Citation of the originating publication (e.g. Verhulst et al. 2015).
+        subjects: Subject identifiers, in file order.
+        frequencies_hz: Stimulus frequencies; 0 Hz denotes the broadband click.
+        thresholds_db_spl: ABR threshold statistics keyed by frequency.
+        high_level_w1_uv: High-level Wave-I amplitude statistics keyed by frequency.
+        tone_average_w1_uv: Wave-I statistics averaged across the reference tones.
+        per_subject: Per-subject high-level wave amplitudes.
+        calibration_level_db: Sound level (dB SPL) used as the suprathreshold
+            reference (e.g. 80 dB SPL for Verhulst et al. 2015).
+    """
+
+    source: str
+    subjects: tuple[str, ...]
+    frequencies_hz: tuple[float, ...]
+    thresholds_db_spl: dict[float, PrePostStat]
+    high_level_w1_uv: dict[float, PrePostStat]
+    tone_average_w1_uv: PrePostStat
+    per_subject: tuple[AnimalWaveAmplitudes, ...]  # reuse same named-tuple
+    calibration_level_db: float = 80.0
+
+    # ── AbrDataset protocol ──────────────────────────────────────────────────
+
+    def threshold_shift_db(self, frequency_hz: float = CLICK_FREQUENCY_HZ) -> float:
+        """Returns the post minus pre threshold shift in dB at a frequency."""
+        return _lookup_frequency(self.thresholds_db_spl, frequency_hz).shift
+
+    def wave_i_ratio(self, frequency_hz: float = CLICK_FREQUENCY_HZ) -> float:
+        """Returns the post over pre high-level Wave-I amplitude ratio."""
+        return _lookup_frequency(self.high_level_w1_uv, frequency_hz).ratio
+
+    @property
+    def click_threshold_shift_db(self) -> float:
+        """Post minus pre click ABR threshold shift in dB."""
+        return self.threshold_shift_db(CLICK_FREQUENCY_HZ)
+
+    @property
+    def suprathreshold_w1_ratio(self) -> float:
+        """Post over pre Wave-I ratio of the group-averaged reference tones."""
+        return self.tone_average_w1_uv.ratio
+
+    @property
+    def per_animal_w1_ratios(self) -> tuple[float, ...]:
+        """Per-subject post over pre Wave-I ratios (named for protocol compatibility)."""
+        return tuple(s.w1_ratio for s in self.per_subject)
+
+def load_human_abr_dataset(
+    data_dir: pathlib.Path | str | None = None,
+) -> HumanAbrDataset:
+    """Loads a human ABR dataset (e.g. Verhulst et al. 2015 / Temboury-Gutierrez et al. 2024).
+
+    The JSON schema is identical to the chinchilla summary file, with the
+    addition of an optional ``"calibration_level_db"`` key and a
+    ``"subjects"`` list instead of ``"animals"``.
+
+    Args:
+        data_dir: Directory holding the data files; defaults to ``DEFAULT_DATA_DIR``.
+
+    Returns:
+        Parsed human empirical dataset.
+    """
+    directory = pathlib.Path(DEFAULT_DATA_DIR if data_dir is None else data_dir)
+    summary_path = directory / HUMAN_SUMMARY_FILE_NAME
+    per_subject_path = directory / HUMAN_PER_SUBJECT_FILE_NAME
+    for path in (summary_path, per_subject_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"Human empirical data file not found: {path}.")
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    frequencies = tuple(float(f) for f in summary["frequencies_hz"])
+    thresholds, _ = _build_stats(summary["thresholds_db_spl"], frequencies, "thresholds_db_spl")
+    w1_stats, w1_average = _build_stats(summary["high_level_w1_uv"], frequencies, "high_level_w1_uv")
+    if w1_average is None:
+        raise ValueError("Human data: high_level_w1_uv must carry a trailing average entry.")
+
+    per_subject = _load_per_animal(per_subject_path)  # same CSV format, subject_id column
+
+    # Subject ID cross-check (subjects key may appear as "subjects" or "animals").
+    summary_subjects = tuple(str(s) for s in summary.get("subjects", summary.get("animals", [])))
+    csv_subjects = tuple(s.animal_id for s in per_subject)
+    if set(summary_subjects) != set(csv_subjects):
+        raise ValueError(
+            f"Subject identifiers disagree: summary {sorted(summary_subjects)} "
+            f"vs per-subject {sorted(csv_subjects)}."
+        )
+
+    return HumanAbrDataset(
+        source=str(summary["source"]),
+        subjects=summary_subjects,
+        frequencies_hz=frequencies,
+        thresholds_db_spl=thresholds,
+        high_level_w1_uv=w1_stats,
+        tone_average_w1_uv=w1_average,
+        per_subject=per_subject,
+        calibration_level_db=float(summary.get("calibration_level_db", 80.0)),
+    )
 
 @dataclasses.dataclass(frozen=True)
 class ChinchillaAbrDataset:
@@ -279,8 +415,8 @@ def load_chinchilla_abr_dataset(
   """
   # Resolve and validate the input file paths.
   directory = pathlib.Path(DEFAULT_DATA_DIR if data_dir is None else data_dir)
-  summary_path = directory / SUMMARY_FILE_NAME
-  per_animal_path = directory / PER_ANIMAL_FILE_NAME
+  summary_path = directory / CHINCHILLA_SUMMARY_FILE_NAME
+  per_animal_path = directory / CHINCHILLA_PER_ANIMAL_FILE_NAME
   for path in (summary_path, per_animal_path):
     if not path.is_file():
       raise FileNotFoundError(f"Empirical data file not found: {path}.")

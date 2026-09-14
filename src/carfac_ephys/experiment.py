@@ -704,20 +704,37 @@ def estimate_threshold_db(
 
 
 class EmpiricalComparison(NamedTuple):
-  """Quantitative comparison of a simulated cohort against animal ABR data.
+    """Quantitative comparison of a simulated cohort against empirical ABR data.
 
-  Simulated values are None when the sweep lacked the levels needed to compute
-  them. Threshold shifts are in dB and Wave-I ratios are dimensionless post over
-  pre amplitude fractions.
-  """
+    Works for both animal (e.g. chinchilla) and human datasets.
 
-  condition: str
-  simulated_threshold_shift_db: float | None
-  animal_threshold_shift_db: float
-  threshold_shift_matched: bool | None
-  simulated_w1_ratio: float | None
-  animal_w1_ratio: float
-  w1_ratio_matched: bool | None
+    Simulated values are None when the sweep lacked the levels needed to compute
+    them. Threshold shifts are in dB and Wave-I ratios are dimensionless post over
+    pre amplitude fractions.
+    """
+
+    condition: str
+    simulated_threshold_shift_db: float | None
+    # Renamed from animal_threshold_shift_db for species neutrality.
+    empirical_threshold_shift_db: float
+    threshold_shift_matched: bool | None
+    simulated_w1_ratio: float | None
+    # Renamed from animal_w1_ratio for species neutrality.
+    empirical_w1_ratio: float
+    w1_ratio_matched: bool | None
+    # Citation of the dataset used for comparison.
+    dataset_source: str = ""
+
+    # ── Backward-compatible aliases ──────────────────────────────────────────
+    @property
+    def animal_threshold_shift_db(self) -> float:
+        """Alias for ``empirical_threshold_shift_db`` (backward compatibility)."""
+        return self.empirical_threshold_shift_db
+
+    @property
+    def animal_w1_ratio(self) -> float:
+        """Alias for ``empirical_w1_ratio`` (backward compatibility)."""
+        return self.empirical_w1_ratio
 
 
 def _simulated_threshold_shift_db(
@@ -749,59 +766,64 @@ def _simulated_threshold_shift_db(
 
 
 def compare_to_empirical(
-  click_levels_db: Sequence[float],
-  abr_results: Mapping[str, Sequence[float]],
-  dataset: empirical.ChinchillaAbrDataset | None = None,
-  condition: str = EXPOSED_CONDITION,
-  baseline: str = BASELINE_CONDITION,
+    click_levels_db: Sequence[float],
+    abr_results: Mapping[str, Sequence[float]],
+    dataset: empirical.AbrDataset | None = None,
+    condition: str = EXPOSED_CONDITION,
+    baseline: str = BASELINE_CONDITION,
 ) -> EmpiricalComparison:
-  """Compares simulated ABR thresholds and Wave-I growth against chinchilla data.
+    """Compares simulated ABR thresholds and Wave-I growth against empirical data.
 
-  The noise-exposed chinchillas of Bharadwaj et al. (2022) recovered their click
-  thresholds while losing suprathreshold Wave-I amplitude, so the simulated
-  cohort must reproduce both numbers, not merely rank in the right order.
+    Accepts either a ``ChinchillaAbrDataset`` (Bharadwaj et al. 2022) or a
+    ``HumanAbrDataset`` (e.g. Verhulst et al. 2015; Temboury-Gutierrez et al. 2024).
+    When *dataset* is ``None`` the chinchilla dataset is loaded as the default,
+    preserving existing behaviour.
 
-  Args:
-    click_levels_db: Click sound levels in dB SPL.
-    abr_results: Mapping of condition name to Wave-I amplitudes in AU.
-    dataset: Empirical dataset; loaded from package data when None.
-    condition: Cohort standing in for the noise-exposed animals.
-    baseline: Cohort treated as the healthy, pre-exposure baseline.
+    Args:
+        click_levels_db: Click sound levels in dB SPL.
+        abr_results: Mapping of condition name to Wave-I amplitudes in AU.
+        dataset: Empirical dataset; loaded from package data when None
+            (defaults to chinchilla).
+        condition: Cohort standing in for the exposed/impaired subjects.
+        baseline: Cohort treated as the healthy, pre-exposure baseline.
 
-  Returns:
-    Record of the simulated values, the animal values, and their agreement.
-  """
-  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+    Returns:
+        Record of the simulated values, the empirical values, and their agreement.
+    """
+    data: empirical.AbrDataset = (
+        empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+    )
 
-  # Compare the click threshold shift, which the animals recovered.
-  animal_shift_db = data.click_threshold_shift_db
-  simulated_shift_db = _simulated_threshold_shift_db(
-    click_levels_db, abr_results, data, condition, baseline
-  )
-  shift_matched = None
-  if simulated_shift_db is not None:
-    shift_matched = abs(simulated_shift_db - animal_shift_db) <= THRESHOLD_SHIFT_TOLERANCE_DB
+    # Compare the click threshold shift.
+    empirical_shift_db = data.click_threshold_shift_db
+    simulated_shift_db = _simulated_threshold_shift_db(
+        click_levels_db, abr_results, data, condition, baseline
+    )
+    shift_matched = None
+    if simulated_shift_db is not None:
+        shift_matched = abs(simulated_shift_db - empirical_shift_db) <= THRESHOLD_SHIFT_TOLERANCE_DB
 
-  # Compare the suprathreshold Wave-I attenuation, which the animals retained.
-  animal_w1_ratio = data.wave_i_ratio()
-  level_indices = {float(level): index for index, level in enumerate(click_levels_db)}
-  exposed_au = _get_level_value(abr_results, level_indices, condition, CALIBRATION_LEVEL_DB)
-  baseline_au = _get_level_value(abr_results, level_indices, baseline, CALIBRATION_LEVEL_DB)
-  simulated_w1_ratio = None
-  ratio_matched = None
-  if exposed_au is not None and baseline_au is not None and baseline_au > 0.0:
-    simulated_w1_ratio = exposed_au / baseline_au
-    ratio_matched = abs(simulated_w1_ratio - animal_w1_ratio) <= W1_RATIO_TOLERANCE
+    # Compare the suprathreshold Wave-I attenuation.
+    empirical_w1_ratio = data.wave_i_ratio()
+    level_indices = {float(level): index for index, level in enumerate(click_levels_db)}
+    exposed_au = _get_level_value(abr_results, level_indices, condition, CALIBRATION_LEVEL_DB)
+    baseline_au = _get_level_value(abr_results, level_indices, baseline, CALIBRATION_LEVEL_DB)
+    simulated_w1_ratio = None
+    ratio_matched = None
+    if exposed_au is not None and baseline_au is not None and baseline_au > 0.0:
+        simulated_w1_ratio = exposed_au / baseline_au
+        ratio_matched = abs(simulated_w1_ratio - empirical_w1_ratio) <= W1_RATIO_TOLERANCE
 
-  return EmpiricalComparison(
-    condition=condition,
-    simulated_threshold_shift_db=simulated_shift_db,
-    animal_threshold_shift_db=animal_shift_db,
-    threshold_shift_matched=shift_matched,
-    simulated_w1_ratio=simulated_w1_ratio,
-    animal_w1_ratio=animal_w1_ratio,
-    w1_ratio_matched=ratio_matched,
-  )
+    return EmpiricalComparison(
+        condition=condition,
+        simulated_threshold_shift_db=simulated_shift_db,
+        empirical_threshold_shift_db=empirical_shift_db,
+        threshold_shift_matched=shift_matched,
+        simulated_w1_ratio=simulated_w1_ratio,
+        empirical_w1_ratio=empirical_w1_ratio,
+        w1_ratio_matched=ratio_matched,
+        dataset_source=data.source,
+    )
 
 
 def format_empirical_comparison_table(comparison: EmpiricalComparison) -> str:
@@ -880,58 +902,71 @@ def _plot_metric_bars(
 
 
 def plot_empirical_comparison(
-  comparison: EmpiricalComparison,
-  output_path: str | pathlib.Path,
-  dataset: empirical.ChinchillaAbrDataset | None = None,
+    comparison: EmpiricalComparison,
+    output_path: str | pathlib.Path,
+    dataset: empirical.AbrDataset | None = None,
 ) -> pathlib.Path:
-  """Plots the simulated cohort against the chinchilla ABR measurements.
+    """Plots the simulated cohort against empirical ABR measurements.
 
-  Args:
-    comparison: Comparison record produced by `compare_to_empirical`.
-    output_path: File path for the saved figure.
-    dataset: Empirical dataset supplying per-animal ratios; loaded when None.
+    Accepts both ``ChinchillaAbrDataset`` and ``HumanAbrDataset`` instances.
 
-  Returns:
-    Path of the saved figure.
-  """
-  path = pathlib.Path(output_path)
-  path.parent.mkdir(parents=True, exist_ok=True)
-  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+    Args:
+        comparison: Comparison record produced by ``compare_to_empirical``.
+        output_path: File path for the saved figure.
+        dataset: Empirical dataset supplying per-subject ratios; loaded
+            (chinchilla default) when None.
 
-  # Render one panel per validated metric.
-  fig, (threshold_ax, ratio_ax) = plt.subplots(1, 2, figsize=(9, 4.5), dpi=300)
-  _plot_metric_bars(
-    axis=threshold_ax,
-    simulated=comparison.simulated_threshold_shift_db,
-    animal=comparison.animal_threshold_shift_db,
-    tolerance=THRESHOLD_SHIFT_TOLERANCE_DB,
-    ylabel="Click ABR Threshold Shift (dB)",
-    title="Threshold Preservation",
-  )
-  _plot_metric_bars(
-    axis=ratio_ax,
-    simulated=comparison.simulated_w1_ratio,
-    animal=comparison.animal_w1_ratio,
-    tolerance=W1_RATIO_TOLERANCE,
-    ylabel="Wave-I Post / Pre Amplitude Ratio",
-    title=f"Suprathreshold Wave-I ({CALIBRATION_LEVEL_DB:g} dB SPL)",
-  )
+    Returns:
+        Path of the saved figure.
+    """
+    path = pathlib.Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data: empirical.AbrDataset = (
+        empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+    )
 
-  # Overlay the individual animals to show the measured spread.
-  ratios = data.per_animal_w1_ratios
-  ratio_ax.scatter([1] * len(ratios), ratios, color="#111111", s=18, zorder=3, label="Animals")
-  ratio_ax.legend(fontsize=8, loc="upper right")
+    # Determine a human-readable label for the scatter overlay.
+    if isinstance(data, empirical.HumanAbrDataset):
+        scatter_label = "Human subjects"
+    else:
+        scatter_label = "Animals"
 
-  fig.suptitle(
-    f"{comparison.condition} vs Noise-Exposed Chinchillas (Bharadwaj et al. 2022)",
-    fontsize=12,
-    fontweight="bold",
-  )
-  fig.tight_layout()
-  fig.savefig(path, dpi=300)
-  plt.close(fig)
+    fig, (threshold_ax, ratio_ax) = plt.subplots(1, 2, figsize=(9, 4.5), dpi=300)
+    _plot_metric_bars(
+        axis=threshold_ax,
+        simulated=comparison.simulated_threshold_shift_db,
+        animal=comparison.empirical_threshold_shift_db,
+        tolerance=THRESHOLD_SHIFT_TOLERANCE_DB,
+        ylabel="Click ABR Threshold Shift (dB)",
+        title="Threshold Preservation",
+    )
+    _plot_metric_bars(
+        axis=ratio_ax,
+        simulated=comparison.simulated_w1_ratio,
+        animal=comparison.empirical_w1_ratio,
+        tolerance=W1_RATIO_TOLERANCE,
+        ylabel="Wave-I Post / Pre Amplitude Ratio",
+        title=f"Suprathreshold Wave-I ({CALIBRATION_LEVEL_DB:g} dB SPL)",
+    )
 
-  return path
+    ratios = data.per_animal_w1_ratios
+    ratio_ax.scatter(
+        [1] * len(ratios), ratios, color="#111111", s=18, zorder=3, label=scatter_label
+    )
+    ratio_ax.legend(fontsize=8, loc="upper right")
+
+    # Use the dataset's own source string for the title rather than hard-coding.
+    source_short = (comparison.dataset_source or "Empirical").split(".")[0]
+    fig.suptitle(
+        f"{comparison.condition} vs Empirical Data ({source_short})",
+        fontsize=12,
+        fontweight="bold",
+    )
+    fig.tight_layout()
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+
+    return path
 
 
 def format_check_status(flag: bool | None) -> str:

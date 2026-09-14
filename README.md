@@ -3,9 +3,9 @@
 [![CI Tests](https://github.com/Australian-Future-Hearing-Initiative/carfac-ephys/actions/workflows/test.yml/badge.svg)](https://github.com/Australian-Future-Hearing-Initiative/carfac-ephys)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-In silico reproduction of animal model cochlear impairment electrophysiology using the [CARFAC](https://github.com/google/carfac) (Cascade of Asymmetric Resonators with Fast-Acting Compression) auditory periphery model.
+In silico reproduction of cochlear impairment electrophysiology using the [CARFAC](https://github.com/google/carfac) (Cascade of Asymmetric Resonators with Fast-Acting Compression) auditory periphery model.
 
-This repository demonstrates that CARFAC accurately reproduces the signature electrophysiological dissociations observed in animal models (e.g., chinchilla and mouse studies; Bharadwaj et al. 2022, Mehraei et al. 2016, Ginsberg et al. 2023) across Auditory Brainstem Response (ABR) Wave-I / Compound Action Potential (CAP) and Envelope-Following Response (EFR) level series.
+This repository demonstrates that CARFAC accurately reproduces the signature electrophysiological dissociations observed in both animal models (e.g., chinchilla and mouse studies; Bharadwaj et al. 2022, Mehraei et al. 2016, Ginsberg et al. 2023) and human studies (e.g., Verhulst et al. 2015, Temboury-Gutierrez et al. 2024) across Auditory Brainstem Response (ABR) Wave-I, Compound Action Potential (CAP) and Envelope-Following Response (EFR) level series.
 
 ---
 
@@ -22,9 +22,14 @@ In animal hearing loss studies, controlled cochlear pathologies produce distinct
 
 ---
 
-## 2. How the Synthetic Model Replicates Animal Data
+## 2. How the Synthetic Model Replicates Empirical Data
 
-The core objective of `carfac-ephys` is reproducing the empirical electrophysiological findings of animal synaptopathy studies (specifically **Bharadwaj et al. 2022**, *Commun Biol*, investigating noise-exposed chinchillas) using the CARFAC biophysical cochlear model.
+The core objective of `carfac-ephys` is reproducing the empirical electrophysiological findings of synaptopathy studies using the CARFAC biophysical cochlear model. The pipeline supports two empirical reference datasets, selectable at runtime:
+
+| `--species` | Reference dataset | Citation |
+| :--- | :--- | :--- |
+| `chinchilla` *(default)* | Noise-exposed chinchilla ABR | Bharadwaj et al. (2022) |
+| `human` | Human listener ABR (normal-hearing, noise-exposed groups) | Verhulst et al. (2015); Temboury-Gutierrez et al. (2024) |
 
 ### 2.1 The Animal Experiment Being Replicated
 
@@ -165,10 +170,14 @@ uv run pytest -v
 
 ### 3. Run Cohort Simulation
 
-Execute the full level sweep across all five cohorts:
+Execute the full level sweep against the **chinchilla** dataset (default):
 ```bash
 uv run carfac-ephys-simulate --output-dir output/
 ```
+
+Or validate against the packaged **human** ABR dataset:
+
+uv run carfac-ephys-simulate --species human --output-dir output/
 
 This will:
 1. Run click-evoked ABR simulations from 30 to 80 dB SPL.

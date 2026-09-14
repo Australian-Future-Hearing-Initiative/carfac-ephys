@@ -23,8 +23,11 @@ from carfac_ephys.empirical import (
   DEFAULT_DATA_DIR,
   AnimalWaveAmplitudes,
   ChinchillaAbrDataset,
+  HumanAbrDataset,
+  AbrDataset,
   PrePostStat,
   load_chinchilla_abr_dataset,
+  load_human_abr_dataset,
 )
 from carfac_ephys.experiment import (
   DEFAULT_CLICK_LEVELS_DB,
