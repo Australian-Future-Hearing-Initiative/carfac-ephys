@@ -4,6 +4,7 @@ import pathlib
 
 import click
 
+from carfac_ephys import electrophysiology, experiment
 from carfac_ephys import electrophysiology, empirical, experiment
 
 
@@ -52,6 +53,7 @@ def main(
     click_levels = [60.0, 80.0] if quick else list(experiment.DEFAULT_CLICK_LEVELS_DB)
     efr_levels = [60.0, 80.0] if quick else list(experiment.DEFAULT_EFR_LEVELS_DB)
 
+    # Run ABR Wave-I level series simulation.
     click.echo("Running ABR Wave-I click level series simulation...")
     abr_results = experiment.simulate_abr_level_series(click_levels_db=click_levels)
     abr_table = experiment.format_ascii_table(
@@ -61,6 +63,7 @@ def main(
     )
     click.echo("\n" + abr_table + "\n")
 
+    # Run EFR SAM tone level series simulation.
     click.echo("Running EFR SAM tone level series simulation...")
     efr_results = experiment.simulate_efr_level_series(efr_levels_db=efr_levels)
     efr_table = experiment.format_ascii_table(
@@ -177,6 +180,13 @@ def main(
         waveforms_4k, waveforms_8k, wave_fig_path, level_db=80.0
       )
       click.echo(f"Saved tone-burst response waveforms figure to: {wave_fig_path}")
+
+      path_4k, path_8k, path_avg = experiment.plot_tone_burst_individual_growth(
+        tb_results, output_dir
+      )
+      click.echo(f"Saved 4 kHz tone-burst growth figure to: {path_4k}")
+      click.echo(f"Saved 8 kHz tone-burst growth figure to: {path_8k}")
+      click.echo(f"Saved 4/8 kHz composite tone-burst growth figure to: {path_avg}")
 
       tb_growth_fig_path = output_dir / "abr_wave_i_growth_tone_burst.png"
       experiment.plot_tone_burst_growth(tb_results, tb_growth_fig_path)

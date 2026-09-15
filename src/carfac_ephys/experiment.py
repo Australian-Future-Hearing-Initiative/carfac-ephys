@@ -65,7 +65,7 @@ DEFAULT_COHORT_CONDITIONS: tuple[CohortCondition, ...] = (
 DEFAULT_CLICK_LEVELS_DB: tuple[float, ...] = (30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
 DEFAULT_EFR_LEVELS_DB: tuple[float, ...] = (40.0, 50.0, 60.0, 70.0, 80.0)
 DEFAULT_TONE_BURST_FREQUENCIES_HZ: tuple[float, float] = (4000.0, 8000.0)
-DEFAULT_TONE_BURST_LEVELS_DB: tuple[float, float, float] = (60.0, 70.0, 80.0)
+DEFAULT_TONE_BURST_LEVELS_DB: tuple[float, ...] = (30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
 
 
 def _normalize_cohort_condition(
@@ -972,6 +972,42 @@ def plot_tone_burst_growth(
   return path
 
 
+def plot_tone_burst_individual_growth(
+  results: ToneBurstCohortResults,
+  output_dir: str | pathlib.Path,
+) -> tuple[pathlib.Path, pathlib.Path, pathlib.Path]:
+  """Plots 3 separate growth figures: 4 kHz, 8 kHz, and 4/8 kHz Composite Average.
+
+  Args:
+    results: ToneBurstCohortResults containing levels and results.
+    output_dir: Directory where the 3 figures will be saved.
+
+  Returns:
+    Tuple of paths to (4 kHz figure, 8 kHz figure, Composite Average figure).
+  """
+  out_dir = pathlib.Path(output_dir)
+  out_dir.mkdir(parents=True, exist_ok=True)
+  path_4k = plot_abr_growth(
+    results.levels_db,
+    results.results_4k,
+    out_dir / "abr_wave_i_growth_4k.png",
+    stimulus_label="4 kHz Tone Burst",
+  )
+  path_8k = plot_abr_growth(
+    results.levels_db,
+    results.results_8k,
+    out_dir / "abr_wave_i_growth_8k.png",
+    stimulus_label="8 kHz Tone Burst",
+  )
+  path_avg = plot_abr_growth(
+    results.levels_db,
+    results.composite_results,
+    out_dir / "abr_wave_i_growth_avg.png",
+    stimulus_label="4/8 kHz Composite Average",
+  )
+  return path_4k, path_8k, path_avg
+
+
 def plot_efr_growth(
   efr_levels_db: Sequence[float],
   results: Mapping[str, Sequence[float]],
@@ -1157,11 +1193,12 @@ class EmpiricalComparison(NamedTuple):
 
 
 def _simulated_threshold_shift_db(
-  click_levels_db: Sequence[float],
+  levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
   dataset: empirical.ChinchillaAbrDataset,
   condition: str,
   baseline: str,
+  frequency_hz: float | None = empirical.CLICK_FREQUENCY_HZ,
 ) -> float | None:
   """Computes the exposed minus baseline threshold shift of the simulation."""
   if baseline not in abr_results or condition not in abr_results:
@@ -1170,15 +1207,19 @@ def _simulated_threshold_shift_db(
   # Express the microvolt threshold criterion in model units.
   try:
     scale_uv_per_au = fit_response_scale_uv_per_au(
-      click_levels_db, abr_results, dataset=dataset, condition=baseline
+      levels_db=levels_db,
+      abr_results=abr_results,
+      dataset=dataset,
+      condition=baseline,
+      frequency_hz=frequency_hz,
     )
   except (ValueError, KeyError):
     return None
   criterion_au = THRESHOLD_CRITERION_UV / scale_uv_per_au
 
   # Interpolate both thresholds; a missing crossing makes the shift unknown.
-  baseline_db = estimate_threshold_db(click_levels_db, abr_results[baseline], criterion_au)
-  exposed_db = estimate_threshold_db(click_levels_db, abr_results[condition], criterion_au)
+  baseline_db = estimate_threshold_db(levels_db, abr_results[baseline], criterion_au)
+  exposed_db = estimate_threshold_db(levels_db, abr_results[condition], criterion_au)
   if baseline_db is None or exposed_db is None:
     return None
   return exposed_db - baseline_db
@@ -1287,10 +1328,13 @@ def format_empirical_comparison_table(comparison: EmpiricalComparison) -> str:
 
 
 class ToneBurstEmpiricalComparison(NamedTuple):
-  """Comparison of simulated tone-burst Wave-I post/pre ratio against animal data."""
+  """Comparison of simulated tone-burst metrics against animal data."""
 
   frequency_hz: float | None  # None denotes composite 4/8 kHz average
   condition: str
+  simulated_threshold_shift_db: float | None
+  animal_threshold_shift_db: float
+  threshold_shift_matched: bool | None
   simulated_w1_ratio: float | None
   animal_w1_ratio: float
   w1_ratio_matched: bool | None
@@ -1303,12 +1347,13 @@ def compare_tone_burst_to_empirical(
   baseline: str = BASELINE_CONDITION,
   level_db: float = CALIBRATION_LEVEL_DB,
   tolerance: float = W1_RATIO_TOLERANCE,
+  threshold_tolerance_db: float = THRESHOLD_SHIFT_TOLERANCE_DB,
 ) -> list[ToneBurstEmpiricalComparison]:
-  """Compares simulated tone-burst Wave-I amplitude ratios against animal data.
+  """Compares simulated tone-burst metrics against animal data.
 
-  Evaluates high-level (80 dB SPL) post/pre ratios for individual frequencies
-  (e.g., 4 kHz and 8 kHz) and the composite 4/8 kHz average against the
-  noise-exposure measurements of Bharadwaj et al. (2022).
+  Evaluates high-level (80 dB SPL) post/pre ratios and threshold shifts for
+  individual frequencies (e.g., 4 kHz and 8 kHz) and the composite 4/8 kHz average
+  against the noise-exposure measurements of Bharadwaj et al. (2022).
 
   Args:
     tone_burst_results: ToneBurstCohortResults from simulate_tone_burst_cohort.
@@ -1317,6 +1362,7 @@ def compare_tone_burst_to_empirical(
     baseline: Cohort treated as healthy pre-exposure baseline.
     level_db: Calibration sound level in dB SPL (default 80.0).
     tolerance: Maximum allowed absolute difference between model and animal.
+    threshold_tolerance_db: Maximum allowed threshold difference in dB.
 
   Returns:
     List of ToneBurstEmpiricalComparison records.
@@ -1335,22 +1381,41 @@ def compare_tone_burst_to_empirical(
       ctrl_amp = freq_results[baseline][target_idx]
       exp_amp = freq_results[condition][target_idx]
       sim_ratio = exp_amp / ctrl_amp if ctrl_amp > 0 else None
-      if freq in data.high_level_w1_uv:
-        animal_ratio = data.high_level_w1_uv[freq].ratio
-        matched = (
-          abs(sim_ratio - animal_ratio) <= tolerance
-          if sim_ratio is not None
-          else None
+      animal_ratio = data.high_level_w1_uv[freq].ratio if freq in data.high_level_w1_uv else 1.0
+      ratio_matched = (
+        abs(sim_ratio - animal_ratio) <= tolerance
+        if sim_ratio is not None
+        else None
+      )
+
+      # Threshold shift comparison
+      sim_shift_db = _simulated_threshold_shift_db(
+        levels_db=tone_burst_results.levels_db,
+        abr_results=freq_results,
+        dataset=data,
+        condition=condition,
+        baseline=baseline,
+        frequency_hz=freq,
+      )
+      animal_shift_db = data.threshold_shift_db(freq) if freq in data.thresholds_db_spl else 0.0
+      shift_matched = (
+        abs(sim_shift_db - animal_shift_db) <= threshold_tolerance_db
+        if sim_shift_db is not None
+        else None
+      )
+
+      comparisons.append(
+        ToneBurstEmpiricalComparison(
+          frequency_hz=freq,
+          condition=condition,
+          simulated_threshold_shift_db=sim_shift_db,
+          animal_threshold_shift_db=animal_shift_db,
+          threshold_shift_matched=shift_matched,
+          simulated_w1_ratio=sim_ratio,
+          animal_w1_ratio=animal_ratio,
+          w1_ratio_matched=ratio_matched,
         )
-        comparisons.append(
-          ToneBurstEmpiricalComparison(
-            frequency_hz=freq,
-            condition=condition,
-            simulated_w1_ratio=sim_ratio,
-            animal_w1_ratio=animal_ratio,
-            w1_ratio_matched=matched,
-          )
-        )
+      )
 
   # Check composite average.
   composite = tone_burst_results.composite_results
@@ -1359,18 +1424,39 @@ def compare_tone_burst_to_empirical(
     exp_amp = composite[condition][target_idx]
     sim_ratio = exp_amp / ctrl_amp if ctrl_amp > 0 else None
     animal_ratio = data.suprathreshold_w1_ratio
-    matched = (
+    ratio_matched = (
       abs(sim_ratio - animal_ratio) <= tolerance
       if sim_ratio is not None
       else None
     )
+
+    sim_shift_db = _simulated_threshold_shift_db(
+      levels_db=tone_burst_results.levels_db,
+      abr_results=composite,
+      dataset=data,
+      condition=condition,
+      baseline=baseline,
+      frequency_hz=None,
+    )
+    shift_4k = data.threshold_shift_db(4000.0) if 4000.0 in data.thresholds_db_spl else 0.0
+    shift_8k = data.threshold_shift_db(8000.0) if 8000.0 in data.thresholds_db_spl else 0.0
+    animal_shift_db = (shift_4k + shift_8k) / 2.0
+    shift_matched = (
+      abs(sim_shift_db - animal_shift_db) <= threshold_tolerance_db
+      if sim_shift_db is not None
+      else None
+    )
+
     comparisons.append(
       ToneBurstEmpiricalComparison(
         frequency_hz=None,
         condition=condition,
+        simulated_threshold_shift_db=sim_shift_db,
+        animal_threshold_shift_db=animal_shift_db,
+        threshold_shift_matched=shift_matched,
         simulated_w1_ratio=sim_ratio,
         animal_w1_ratio=animal_ratio,
-        w1_ratio_matched=matched,
+        w1_ratio_matched=ratio_matched,
       )
     )
 
@@ -1394,13 +1480,25 @@ def format_tone_burst_comparison_table(
   rows: list[tuple[str, str, str, str, str]] = []
   for comp in comparisons:
     if comp.frequency_hz is None:
-      metric_label = f"Tone-Burst 4/8 kHz average Wave-I ratio ({CALIBRATION_LEVEL_DB:g} dB SPL)"
+      freq_label = "4/8 kHz average"
     else:
-      metric_label = f"Tone-Burst {comp.frequency_hz:g} Hz Wave-I ratio ({CALIBRATION_LEVEL_DB:g} dB SPL)"
+      freq_label = f"{comp.frequency_hz:g} Hz"
 
+    # Threshold shift row
     rows.append(
       (
-        metric_label,
+        f"Tone-Burst {freq_label} ABR threshold shift (dB)",
+        format_value(comp.simulated_threshold_shift_db, "+.2f"),
+        format(comp.animal_threshold_shift_db, "+.2f"),
+        f"+/-{THRESHOLD_SHIFT_TOLERANCE_DB:g} dB",
+        format_check_status(comp.threshold_shift_matched),
+      )
+    )
+
+    # Suprathreshold Wave-I ratio row
+    rows.append(
+      (
+        f"Tone-Burst {freq_label} Wave-I ratio ({CALIBRATION_LEVEL_DB:g} dB SPL)",
         format_value(comp.simulated_w1_ratio, ".3f"),
         format(comp.animal_w1_ratio, ".3f"),
         f"+/-{W1_RATIO_TOLERANCE:g}",
