@@ -97,6 +97,7 @@ Simulated cohort responses across six representative conditions:
 - **Mixed-Loss**: Combined pathology ($40\%$ OHC health, $50\%$ AN fibers).
 
 ### ABR Wave-I Onset Amplitude (Clicks: 30–80 dB SPL)
+### ABR Wave-I Onset Amplitude (Broadband Clicks: 30–80 dB SPL)
 
 Responses are in arbitrary units (AU): CARFAC neural activity patterns are dimensionless model output, not calibrated firing rates or recorded voltages. `carfac_ephys.fit_response_scale_uv_per_au` fits the conversion to microvolts by matching the Control response at 80 dB SPL to the pre-exposure chinchilla click Wave-I amplitude of Bharadwaj et al. (2022), giving $\approx 0.0316$ $\mu$V/AU.
 
@@ -106,14 +107,20 @@ Responses are in arbitrary units (AU): CARFAC neural activity patterns are dimen
 | **Synaptopathy-50** | 0.0075 | 0.0760 | 0.7949 | 6.1125 | 28.1907 | **35.5266** *(52.6% of Control)* |
 | **Synaptopathy-25** | 0.0041 | 0.0414 | 0.4330 | 3.2536 | 14.6364 | **18.2008** *(27.0% of Control)* |
 | **Selective-Synaptopathy** | 0.0123 | 0.1238 | 1.2915 | 10.0933 | 35.3127 | **46.6437** *(69.1% of Control)* |
+| **Control** | 0.0128 | 0.1282 | 1.3399 | 10.7559 | 51.5884 | **67.5298** |
+| **Synaptopathy-50** | 0.0075 | 0.0760 | 0.7949 | 6.1125 | 28.1906 | **35.5266** *(52.6% of Control)* |
+| **Synaptopathy-25** | 0.0041 | 0.0414 | 0.4330 | 3.2536 | 14.6364 | **18.2007** *(27.0% of Control)* |
+| **Selective-Synaptopathy** | 0.0123 | 0.1238 | 1.2915 | 10.0933 | 35.3128 | **46.6437** *(69.1% of Control)* |
 | **OHC-Loss** | 0.0008 | 0.0025 | 0.0078 | 0.0256 | 0.1077 | **0.8301** *(~30 dB threshold shift)* |
 | **Mixed-Loss** | 0.0004 | 0.0012 | 0.0039 | 0.0128 | 0.0547 | **0.4261** |
 
 Selective loss of the high-threshold fibers leaves the near-threshold response almost intact ($96.5\%$ of Control at 40 dB SPL, versus $59.3\%$ for uniform $50\%$ deafferentation) while still cutting the suprathreshold Wave-I to $69.1\%$ — the hidden-hearing-loss signature, and within the $0.74 \pm 0.10$ post/pre Wave-I ratio measured in noise-exposed chinchillas (Bharadwaj et al. 2022).
 
 ![ABR Wave-I Growth Curves](assets/abr_wave_i_growth.png)
+![ABR Wave-I Growth Curves (Broadband Click)](assets/abr_wave_i_growth.png)
 
 ### Empirical Validation Against Chinchilla ABR Data
+### Empirical Validation Against Chinchilla Click ABR Data
 
 The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_chinchilla_abr_dataset`), not from hand-picked bands.
 
@@ -123,6 +130,62 @@ The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of
 | Suprathreshold Wave-I post/pre ratio (80 dB SPL) | $0.691$ | $0.742$ | $\pm 0.10$ | PASSED |
 
 ![Simulated versus Animal ABR Comparison](assets/empirical_comparison.png)
+
+### ABR Wave-I Onset Amplitude (Tone Bursts: 4 kHz & 8 kHz, 60–80 dB SPL)
+
+Tone burst stimuli (5 ms duration, 0.5 ms linear rise/fall ramps, 20 Hz stimulation rate, 500 repetitions) are simulated at 4 kHz and 8 kHz with alternating polarities ($+1.0$ and $-1.0$). Averaging the positive and negative polarity responses cancels the phase-locked cochlear microphonic (CM) and stimulus artifact, isolating the rectified neural compound action potential (Wave-I).
+
+#### 4 kHz Tone-Burst ABR Wave-I (AU)
+`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=4000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 4 kHz Wave-I amplitude ($1.3684$ $\mu$V), giving $\approx 0.0149$ $\mu$V/AU.
+
+| Condition | 60 dB SPL | 70 dB SPL | 80 dB SPL |
+| :--- | :---: | :---: | :---: |
+| **Control** | 21.5176 | 68.1508 | **91.8332** |
+| **Synaptopathy-50** | 11.2915 | 36.8242 | **49.0532** *(53.4% of Control)* |
+| **Synaptopathy-25** | 5.7994 | 19.0367 | **25.4909** *(27.8% of Control)* |
+| **Selective-Synaptopathy** | 18.4511 | 52.1874 | **65.4712** *(71.3% of Control)* |
+| **OHC-Loss** | 0.0655 | 0.6876 | **6.1919** *(~30 dB threshold shift)* |
+| **Mixed-Loss** | 0.0339 | 0.3567 | **3.1971** |
+
+#### 8 kHz Tone-Burst ABR Wave-I (AU)
+`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=8000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 8 kHz Wave-I amplitude ($1.0985$ $\mu$V), giving $\approx 0.0261$ $\mu$V/AU.
+
+| Condition | 60 dB SPL | 70 dB SPL | 80 dB SPL |
+| :--- | :---: | :---: | :---: |
+| **Control** | 2.4910 | 9.9253 | **42.0962** |
+| **Synaptopathy-50** | 1.4197 | 5.3846 | **24.3663** *(57.9% of Control)* |
+| **Synaptopathy-25** | 0.7580 | 2.8019 | **13.0749** *(31.1% of Control)* |
+| **Selective-Synaptopathy** | 2.3775 | 9.1512 | **34.5782** *(82.1% of Control)* |
+| **OHC-Loss** | 0.0050 | 0.0501 | **0.5234** *(~30 dB threshold shift)* |
+| **Mixed-Loss** | 0.0025 | 0.0256 | **0.2679** |
+
+#### 4/8 kHz Composite Average ABR Wave-I (AU)
+`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=None)` matches the Control composite response at 80 dB SPL to the animal 4/8 kHz composite baseline ($1.2335$ $\mu$V), giving $\approx 0.0184$ $\mu$V/AU.
+
+| Condition | 60 dB SPL | 70 dB SPL | 80 dB SPL |
+| :--- | :---: | :---: | :---: |
+| **Control** | 12.0043 | 39.0380 | **66.9647** |
+| **Synaptopathy-50** | 6.3556 | 21.1044 | **36.7098** *(54.8% of Control)* |
+| **Synaptopathy-25** | 3.2787 | 10.9193 | **19.2829** *(28.8% of Control)* |
+| **Selective-Synaptopathy** | 10.4143 | 30.6693 | **50.0247** *(74.7% of Control)* |
+| **OHC-Loss** | 0.0352 | 0.3688 | **3.3576** |
+| **Mixed-Loss** | 0.0182 | 0.1912 | **1.7325** |
+
+#### Tone-Burst Empirical Validation Against Chinchilla Data
+Simulated post/pre ratios from the `Selective-Synaptopathy` cohort compared against noise-exposed chinchilla tone-burst measurements from Bharadwaj et al. (2022):
+
+| Metric | Simulated (Selective-Synaptopathy) | Animal (Bharadwaj et al. 2022) | Tolerance | Status |
+| :--- | :---: | :---: | :---: | :---: |
+| Tone-Burst 4000 Hz Wave-I ratio (80 dB SPL) | $0.713$ | $0.626$ | $\pm 0.10$ | PASSED |
+| Tone-Burst 8000 Hz Wave-I ratio (80 dB SPL) | $0.821$ | $0.831$ | $\pm 0.10$ | PASSED |
+| Tone-Burst 4/8 kHz average Wave-I ratio (80 dB SPL) | $0.747$ | $0.717$ | $\pm 0.10$ | PASSED |
+
+#### Tone-Burst Response Waveforms and Growth Functions
+Side-by-side response waveforms (4 kHz and 8 kHz at 80 dB SPL) demonstrating the compound neural onset and subsequent rate adaptation, along with the corresponding 3-panel input-output growth functions:
+
+![Compound ABR Tone-Burst Response Waveforms](assets/tone_burst_waveforms.png)
+
+![ABR Wave-I Input-Output Growth Functions (Tone Bursts)](assets/abr_wave_i_growth_tone_burst.png)
 
 ### Envelope Following Response (EFR) Growth (SAM Tones: 40–80 dB SPL)
 
@@ -159,6 +222,7 @@ uv sync
 ### 2. Run Automated Test Suite
 
 Verify all 144 unit and integration tests:
+Verify all 164 unit and integration tests:
 ```bash
 uv run pytest -v
 ```
@@ -166,8 +230,18 @@ uv run pytest -v
 ### 3. Run Cohort Simulation
 
 Execute the full level sweep across all five cohorts:
+Execute simulations across cohorts using the CLI tool:
+
 ```bash
 uv run carfac-ephys-simulate --output-dir output/
+# Run both click and tone-burst simulations (default)
+uv run carfac-ephys-simulate --output-dir output/ --stimulus all
+
+# Run broadband click and EFR simulations only
+uv run carfac-ephys-simulate --output-dir output/ --stimulus click
+
+# Run 4 kHz and 8 kHz tone-burst simulations only
+uv run carfac-ephys-simulate --output-dir output/ --stimulus tone-burst
 ```
 
 This will:
@@ -176,11 +250,44 @@ This will:
 3. Validate all biological signatures, including the quantitative comparison against the chinchilla ABR data.
 4. Print summary tables to stdout.
 5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`, `empirical_comparison.png`) and `simulation_report.md` to `output/`.
+1. Run click-evoked ABR simulations from 30 to 80 dB SPL (when `--stimulus all` or `click`).
+2. Run SAM-tone EFR simulations from 40 to 80 dB SPL (when `--stimulus all` or `click`).
+3. Run alternating-polarity 4 kHz and 8 kHz tone-burst simulations from 60 to 80 dB SPL (when `--stimulus all` or `tone-burst`).
+4. Validate all biological signatures, including quantitative comparisons against empirical chinchilla ABR data.
+5. Print summary tables and calibrated scaling factors to stdout.
+6. Save publication-quality figures (`abr_wave_i_growth_click.png`, `abr_wave_i_growth_tone_burst.png`, `tone_burst_waveforms.png`, `efr_growth.png`, `empirical_comparison.png`) and `simulation_report.md` to `output/`.
 
 #### Fast Smoke Test
 To verify the pipeline on a reduced 2-level subset:
 ```bash
 uv run carfac-ephys-simulate --quick --output-dir output/
+```
+
+#### Python API Usage
+Simulations can also be invoked directly from Python:
+
+```python
+import carfac_ephys as ce
+
+# 1. Generate tone-burst stimuli with alternating polarity
+burst_pos = ce.generate_tone_burst(frequency_hz=4000.0, peak_db_spl=80.0, polarity=1.0)
+burst_neg = ce.generate_tone_burst(frequency_hz=4000.0, peak_db_spl=80.0, polarity=-1.0)
+
+# 2. Multi-frequency tone-burst cohort simulation
+tb_results = ce.simulate_tone_burst_cohort(tone_burst_levels_db=[60.0, 70.0, 80.0])
+print("4 kHz Control @ 80 dB:", tb_results.results_4k["Control"][-1])
+print("8 kHz Control @ 80 dB:", tb_results.results_8k["Control"][-1])
+print("Composite Avg Control @ 80 dB:", tb_results.composite_results["Control"][-1])
+
+# 3. Empirical comparison against Bharadwaj et al. (2022)
+tb_comp = ce.compare_tone_burst_to_empirical(tb_results)
+print(ce.format_tone_burst_comparison_table(tb_comp))
+
+# 4. Generate waveform figures and input-output growth plots
+wave_4k = ce.simulate_tone_burst_waveforms(frequency_hz=4000.0, level_db=80.0)
+wave_8k = ce.simulate_tone_burst_waveforms(frequency_hz=8000.0, level_db=80.0)
+ce.plot_tone_burst_waveforms(wave_4k, wave_8k, "output/tone_burst_waveforms.png")
+ce.plot_tone_burst_growth(tb_results, "output/abr_wave_i_growth_tone_burst.png")
 ```
 
 ---
@@ -193,13 +300,19 @@ carfac-ephys/
 ├── README.md                   # Documentation and walkthrough
 ├── assets/                     # Published diagnostic figures
 │   ├── abr_wave_i_growth.png
+│   ├── abr_wave_i_growth_click.png
+│   ├── abr_wave_i_growth_tone_burst.png
 │   ├── efr_growth.png
 │   └── empirical_comparison.png
+│   ├── empirical_comparison.png
+│   ├── simulation_report.md
+│   └── tone_burst_waveforms.png
 ├── src/
 │   └── carfac_ephys/
 │       ├── __init__.py
 │       ├── constants.py        # Calibration constants (104 dB SPL = 0 dB FS)
 │       ├── stimuli.py          # Calibrated click and SAM tone generation
+│       ├── stimuli.py          # Calibrated click, SAM tone, and tone-burst generation
 │       ├── carfac_model.py     # Biophysical CARFAC wrapper (OHC & fiber retention)
 │       ├── electrophysiology.py # ABR Wave-I and EFR metric extractors
 │       ├── empirical.py        # Chinchilla ABR dataset loader (Bharadwaj et al. 2022)
