@@ -266,11 +266,13 @@ class TestCli:
     assert "carfac-ephys-simulate" in result.output or "output-dir" in result.output
     assert "--output-dir" in result.output
     assert "--plot" in result.output
+    assert "--species" in result.output
 
   def test_cli_quick_no_plot(self):
     runner = CliRunner()
     result = runner.invoke(main, ["--quick", "--no-plot"])
     assert result.exit_code == 0
+    assert "Species: chinchilla" in result.output
     assert "ABR Wave-I" in result.output
     assert "EFR Spectral Magnitude" in result.output
     assert "Saved" not in result.output
