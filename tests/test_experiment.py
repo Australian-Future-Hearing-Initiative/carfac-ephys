@@ -907,6 +907,19 @@ class TestCalibrationStrategies:
     )
     return dataset, click_results, tb_results, levels_db
 
+  def test_defaults(self, mock_results):
+    dataset, click_res, tb_res, levels_db = mock_results
+    config = CalibrationConfig()
+    assert config.strategy == "mode-dependent"
+    assert config.reference == "average"
+
+    # Default resolve_scale_factor uses mode-dependent with average reference
+    s_4k_default = resolve_scale_factor(
+      stimulus_type="4k", click_results=click_res, tone_burst_results=tb_res, click_levels_db=levels_db
+    )
+    expected_avg = dataset.tone_average_w1_uv.mean_pre / 65.0
+    assert s_4k_default == pytest.approx(expected_avg)
+
   def test_individual_strategy(self, mock_results):
     dataset, click_res, tb_res, levels_db = mock_results
 

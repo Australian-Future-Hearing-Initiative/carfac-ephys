@@ -75,6 +75,7 @@ class CalibrationConfig(NamedTuple):
   """Configuration specifying calibration strategy and reference stimulus."""
 
   strategy: str = "individual"
+  strategy: str = "mode-dependent"
   reference: str = "average"
 
 
@@ -698,6 +699,7 @@ def fit_response_scale_uv_per_au(
 
 def resolve_scale_factor(
   strategy: str = "individual",
+  strategy: str = "mode-dependent",
   stimulus_type: str | float | None = "click",
   click_results: Mapping[str, Sequence[float]] | None = None,
   tone_burst_results: ToneBurstCohortResults | None = None,
@@ -1535,6 +1537,7 @@ def compare_tone_burst_to_empirical(
   tolerance: float = W1_RATIO_TOLERANCE,
   threshold_tolerance_db: float = THRESHOLD_SHIFT_TOLERANCE_DB,
   calibration_strategy: str = "individual",
+  calibration_strategy: str = "mode-dependent",
   calibration_reference: str = "average",
   click_results: Mapping[str, Sequence[float]] | None = None,
   click_levels_db: Sequence[float] | None = None,

@@ -218,6 +218,10 @@ Carrier $f_c = 2000$ Hz, modulation frequency $f_m = 100$ Hz, $100\%$ modulation
 `carfac-ephys` supports three distinct calibration strategies to convert arbitrary response units (AU) to physical microvolts (µV) matching empirical chinchilla recordings:
 
 1. **`individual` (Default)**:
+1. **`mode-dependent` (Default)**:
+   Broadband clicks use their dedicated click calibration factor ($\approx 0.0316$ µV/AU), while tone-bursts share a **single common scale factor** determined by `--calibration-reference` (default: `average`, $\approx 0.0184$ µV/AU; or optionally `4k` or `8k`). This preserves relative frequency sensitivity between 4 kHz and 8 kHz tone bursts while accounting for spectral differences against broadband clicks.
+
+2. **`individual`**:
    Every stimulus mode and frequency is scaled to its **own** 80 dB pre-exposure amplitude from the empirical chinchilla dataset (Bharadwaj et al. 2022).
    - Click scale factor: $\approx 0.0316$ µV/AU
    - 4 kHz tone-burst scale factor: $\approx 0.0149$ µV/AU
@@ -252,6 +256,7 @@ uv sync
 ### 2. Run Automated Test Suite
 
 Verify all 174 unit and integration tests:
+Verify all 175 unit and integration tests:
 ```bash
 uv run pytest -v
 ```
@@ -262,10 +267,13 @@ Execute simulations across cohorts using the CLI tool:
 
 ```bash
 # Run both click and tone-burst simulations with individual calibration (default)
+# Run both click and tone-burst simulations with default mode-dependent calibration (average reference)
 uv run carfac-ephys-simulate --output-dir output/ --stimulus all
 
 # Run with mode-dependent calibration using composite average reference
 uv run carfac-ephys-simulate --output-dir output/ --calibration-strategy mode-dependent --calibration-reference average
+# Run with individual calibration (scaling each stimulus to its own 80 dB peak)
+uv run carfac-ephys-simulate --output-dir output/ --calibration-strategy individual
 
 # Run with unified calibration using click reference
 uv run carfac-ephys-simulate --output-dir output/ --calibration-strategy unified --calibration-reference click
