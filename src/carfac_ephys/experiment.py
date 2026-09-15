@@ -891,7 +891,19 @@ def plot_tone_burst_waveforms(
     fontsize=11,
     fontweight="bold",
   )
-  ax1.legend(frameon=True, fontsize=8.5, loc="upper right")
+
+  # Place a single legend outside the axes grid stretched horizontally across the two subplots.
+  handles, labels = ax1.get_legend_handles_labels()
+  by_label = dict(zip(labels, handles))
+  fig.legend(
+    by_label.values(),
+    by_label.keys(),
+    loc="lower center",
+    bbox_to_anchor=(0.5, -0.02),
+    ncol=len(by_label),
+    frameon=True,
+    fontsize=9.0,
+  )
 
   fig.suptitle(
     f"Compound ABR Tone-Burst Response Waveforms ({level_db:g} dB SPL, Alternating Polarity)",
@@ -899,8 +911,8 @@ def plot_tone_burst_waveforms(
     fontweight="bold",
     y=0.98,
   )
-  fig.tight_layout()
-  fig.savefig(path, dpi=300)
+  fig.tight_layout(rect=[0.0, 0.06, 1.0, 0.95])
+  fig.savefig(path, dpi=300, bbox_inches="tight")
   plt.close(fig)
 
   return path
