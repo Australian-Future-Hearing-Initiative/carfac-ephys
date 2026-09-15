@@ -100,7 +100,7 @@ Simulated cohort responses across six representative conditions:
 
 #### ABR Wave-I Onset Amplitude (Broadband Clicks: 30–80 dB SPL)
 
-Responses are in arbitrary units (AU): CARFAC neural activity patterns are dimensionless model output, not calibrated firing rates or recorded voltages. `carfac_ephys.fit_response_scale_uv_per_au` fits the conversion to microvolts by matching the Control response at 80 dB SPL to the pre-exposure chinchilla click Wave-I amplitude of Bharadwaj et al. (2022), giving $\approx 0.0316$ $\mu$V/AU.
+Responses are in arbitrary units (AU): CARFAC neural activity patterns are dimensionless model output, not calibrated firing rates or recorded voltages. `carfac_ephys.fit_response_scale_uv_per_au` fits the conversion to microvolts by matching the Control response at 80 dB SPL to the pre-exposure chinchilla click Wave-I amplitude of Bharadwaj et al. (2022), giving $\approx 0.0316$ µV/AU.
 
 | Condition | 30 dB SPL | 40 dB SPL | 50 dB SPL | 60 dB SPL | 70 dB SPL | 80 dB SPL |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -117,7 +117,7 @@ Selective loss of the high-threshold fibers leaves the near-threshold response a
 
 #### Empirical Validation Against Chinchilla Click ABR Data
 
-The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_chinchilla_abr_dataset`), not from hand-picked bands.
+The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ µV crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_chinchilla_abr_dataset`), not from hand-picked bands.
 
 | Metric | Simulated (Selective-Synaptopathy) | Animal (Bharadwaj et al. 2022) | Tolerance | Status |
 | :--- | :---: | :---: | :---: | :---: |
@@ -133,7 +133,7 @@ The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of
 Tone burst stimuli (5 ms duration, 0.5 ms linear rise/fall ramps, 20 Hz stimulation rate, 500 repetitions) are simulated across 30 to 80 dB SPL at 4 kHz and 8 kHz with alternating polarities ($+1.0$ and $-1.0$). Averaging the positive and negative polarity responses cancels the phase-locked cochlear microphonic (CM) and stimulus artifact, isolating the rectified neural compound action potential (Wave-I).
 
 #### 4 kHz Tone-Burst ABR Wave-I (30–80 dB SPL)
-`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=4000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 4 kHz Wave-I amplitude ($1.3684$ $\mu$V), giving $\approx 0.0149$ $\mu$V/AU.
+`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=4000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 4 kHz Wave-I amplitude ($1.3684$ µV), giving $\approx 0.0149$ µV/AU.
 
 | Condition | 30 dB SPL | 40 dB SPL | 50 dB SPL | 60 dB SPL | 70 dB SPL | 80 dB SPL |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -147,7 +147,7 @@ Tone burst stimuli (5 ms duration, 0.5 ms linear rise/fall ramps, 20 Hz stimulat
 ![4 kHz Tone-Burst ABR Wave-I Growth](assets/abr_wave_i_growth_4k.png)
 
 #### 8 kHz Tone-Burst ABR Wave-I (30–80 dB SPL)
-`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=8000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 8 kHz Wave-I amplitude ($1.0985$ $\mu$V), giving $\approx 0.0261$ $\mu$V/AU.
+`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=8000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 8 kHz Wave-I amplitude ($1.0985$ µV), giving $\approx 0.0261$ µV/AU.
 
 | Condition | 30 dB SPL | 40 dB SPL | 50 dB SPL | 60 dB SPL | 70 dB SPL | 80 dB SPL |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -161,7 +161,7 @@ Tone burst stimuli (5 ms duration, 0.5 ms linear rise/fall ramps, 20 Hz stimulat
 ![8 kHz Tone-Burst ABR Wave-I Growth](assets/abr_wave_i_growth_8k.png)
 
 #### 4/8 kHz Composite Average ABR Wave-I (30–80 dB SPL)
-`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=None)` matches the Control composite response at 80 dB SPL to the animal 4/8 kHz composite baseline ($1.2335$ $\mu$V), giving $\approx 0.0184$ $\mu$V/AU.
+`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=None)` matches the Control composite response at 80 dB SPL to the animal 4/8 kHz composite baseline ($1.2335$ µV), giving $\approx 0.0184$ µV/AU.
 
 | Condition | 30 dB SPL | 40 dB SPL | 50 dB SPL | 60 dB SPL | 70 dB SPL | 80 dB SPL |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -180,7 +180,7 @@ Side-by-side horizontal response waveforms (4 kHz and 8 kHz at 80 dB SPL) demons
 ![Compound ABR Tone-Burst Response Waveforms](assets/tone_burst_waveforms.png)
 
 #### Tone-Burst Empirical Validation Against Chinchilla Data
-Simulated threshold shifts ($0.1$ $\mu$V crossing) and suprathreshold post/pre ratios from the `Selective-Synaptopathy` cohort compared against noise-exposed chinchilla tone-burst measurements from Bharadwaj et al. (2022):
+Simulated threshold shifts ($0.1$ µV crossing) and suprathreshold post/pre ratios from the `Selective-Synaptopathy` cohort compared against noise-exposed chinchilla tone-burst measurements from Bharadwaj et al. (2022):
 
 | Metric | Simulated (Selective-Synaptopathy) | Animal (Bharadwaj et al. 2022) | Tolerance | Status |
 | :--- | :---: | :---: | :---: | :---: |
