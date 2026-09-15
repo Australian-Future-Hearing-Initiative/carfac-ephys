@@ -939,11 +939,16 @@ def plot_empirical_comparison(
         title=f"Suprathreshold Wave-I ({CALIBRATION_LEVEL_DB:g} dB SPL)",
     )
 
+    # Per-subject ratios only exist for a paired (repeated-measures) species;
+    # an unpaired species (e.g. human) has no subject with both measurements,
+    # so `per_animal_w1_ratios` is empty and the scatter overlay is skipped
+    # rather than plotting nothing with a dangling legend entry.
     ratios = data.per_animal_w1_ratios
-    ratio_ax.scatter(
-        [1] * len(ratios), ratios, color="#111111", s=18, zorder=3, label=scatter_label
-    )
-    ratio_ax.legend(fontsize=8, loc="upper right")
+    if ratios:
+        ratio_ax.scatter(
+            [1] * len(ratios), ratios, color="#111111", s=18, zorder=3, label=scatter_label
+        )
+        ratio_ax.legend(fontsize=8, loc="upper right")
 
     # Use the dataset's own source string for the title rather than hard-coding.
     source_short = (comparison.dataset_source or "Empirical").split(".")[0]
@@ -1091,6 +1096,7 @@ def validate_biological_signatures(
 def format_calibration_line(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
+  dataset: empirical.AbrDataset | None = None,
   species: str = empirical.DEFAULT_SPECIES,
 ) -> str:
   """Renders the fitted microvolt scale, or a note when it cannot be fitted.
@@ -1101,10 +1107,14 @@ def format_calibration_line(
   Args:
     click_levels_db: Click sound levels in dB SPL.
     abr_results: Mapping of condition name to Wave-I amplitudes in AU.
-    species: Species whose empirical dataset supplies the calibration target.
+    dataset: Empirical dataset; loaded for `species` from package data when
+      None. Pass the caller's already-loaded dataset so a non-default
+      `comparison_group` (e.g. human "ma") isn't silently dropped back to
+      the species' default comparison group.
+    species: Species to load when `dataset` is None; ignored otherwise.
   """
   try:
-    data = empirical.load_abr_dataset(species)
+    data = empirical.load_abr_dataset(species) if dataset is None else dataset
     scale = fit_response_scale_uv_per_au(click_levels_db, abr_results, dataset=data)
   except (ValueError, KeyError, FileNotFoundError) as error:
     return f"Scale factor unavailable: {error}"
@@ -1121,6 +1131,7 @@ def generate_simulation_report(
   efr_levels_db: Sequence[float],
   efr_results: Mapping[str, Sequence[float]],
   species: str = empirical.DEFAULT_SPECIES,
+  dataset: empirical.AbrDataset | None = None,
   output_path: str | pathlib.Path | None = None,
 ) -> str:
   """Generates a Markdown simulation report summarizing cohort electrophysiology.
@@ -1131,6 +1142,9 @@ def generate_simulation_report(
     efr_levels_db: SAM tone carrier sound levels in dB SPL.
     efr_results: Mapping of condition name to EFR spectral magnitudes.
     species: Species whose empirical dataset the report is compared against.
+    dataset: Empirical dataset; loaded for `species` from package data when
+      None. Pass the caller's already-loaded dataset so a non-default
+      `comparison_group` isn't silently dropped back to the species' default.
     output_path: Optional file path to write the markdown report.
 
   Returns:
@@ -1138,7 +1152,7 @@ def generate_simulation_report(
   """
   # Load the empirical dataset once and reuse it for validation, calibration,
   # and the comparison table so every section reports the same species.
-  data = empirical.load_abr_dataset(species)
+  data = empirical.load_abr_dataset(species) if dataset is None else dataset
 
   # Evaluate biological signature criteria.
   validation = validate_biological_signatures(
@@ -1154,7 +1168,7 @@ def generate_simulation_report(
   efr_md = format_markdown_table(efr_levels_db, efr_results)
 
   # Fit the microvolt scale; skip it when the calibration level was not simulated.
-  calibration_line = format_calibration_line(click_levels_db, abr_results, species=species)
+  calibration_line = format_calibration_line(click_levels_db, abr_results, dataset=data, species=species)
 
   # Quantify the agreement with the reference measurements.
   comparison = compare_to_empirical(click_levels_db, abr_results, dataset=data)

@@ -1,5 +1,5 @@
 {
-  "source": "User-provided human synaptopathy ABR dataset: control vs. noise-exposed listeners (cross-sectional, unpaired groups). Wave-I/Wave-V amplitudes are click-evoked; low-frequency audiometric average (LFA) used as the click-threshold proxy.",
+  "source": "TODO: confirm citation for Human_Synaptopathy_ABRdata.csv (ctrl/nexp/ma independent-groups design)",
   "subjects": [
     "770ce4481db6e676",
     "bd030307b3902a95",
@@ -108,59 +108,183 @@
     "036c55e6e36680eb",
     "2c3dd6a8e2d08ef8",
     "c918380b9941714e",
-    "16bff383644096cc"
+    "16bff383644096cc",
+    "67ea589cbdb9ad00",
+    "663b3727d6561758",
+    "b825bac3f219c985",
+    "6c4ee5eb1173e05b",
+    "784242cb9383a75f",
+    "2513a800b931bad5",
+    "cb64d90114af230c",
+    "af6fc4d80d889572",
+    "0c24c4f773de260b",
+    "24506b2233302092",
+    "db308d073e85800f",
+    "0a1415bc2dc525c8",
+    "1e50b84a6b2a2070",
+    "0186e07548d3bde9",
+    "42366989b983462a",
+    "85c405da365e08c4",
+    "5cc19036abfd3bc9",
+    "3b6b68a8c1744c15",
+    "06dba2c9978caf1e",
+    "fa7d37491e95e521",
+    "703d5b8b8e22d0ea",
+    "6e700af25302e414",
+    "8fefa5973c2a5bba",
+    "2f619fd7a097dfce",
+    "b0608d3fbeb41b14",
+    "18a12f81e8f59b0d",
+    "1600de66fb2b7f11",
+    "1236291c4161165c",
+    "94a71c170bbd8ed4",
+    "abc34e31c20c15ea",
+    "0f2cf8a834e8c080",
+    "79cd646a2c277ee3",
+    "5c0b2019256a5ba7",
+    "bfd692c038d9f6d7",
+    "2f0b4a05169249a1",
+    "60ed8e9a543b3f69",
+    "6cd3120059bb631f",
+    "41b73e1efa745f16",
+    "f094db2806f14443",
+    "970adadc058c028b",
+    "bb3a1bf339121f3e",
+    "bf33bb9b866ab2e8",
+    "c68b374302bfe7be",
+    "6927e3f9d4c825d0",
+    "479c38ad917a260c",
+    "df806885ee06c950",
+    "d9ab50207087e345",
+    "5fa3a97122f07cba",
+    "b0b5c930c481ca01",
+    "b926d46ea80d4295",
+    "a9f87362c636eb39",
+    "7b132486aa83f72b",
+    "0da551758dd5ca24",
+    "3d0a36efc513578d",
+    "f1f149f5c3f017cd",
+    "60372e8d4a572c56",
+    "9dcabb26bbb0ba38",
+    "aed6967b3780982a"
   ],
   "frequencies_hz": [
     0
   ],
   "thresholds_db_spl": {
-    "mean_pre": [
-      5.113636
-    ],
-    "mean_post": [
-      4.811321
-    ],
-    "std_pre": [
-      3.626618
-    ],
-    "std_post": [
-      4.126866
-    ]
+    "nexp": {
+      "mean_pre": [
+        5.113636363636363
+      ],
+      "mean_post": [
+        4.811320754716981
+      ],
+      "std_pre": [
+        3.6266178324103713
+      ],
+      "std_post": [
+        4.126866029090472
+      ]
+    },
+    "ma": {
+      "mean_pre": [
+        5.113636363636363
+      ],
+      "mean_post": [
+        6.890810344827587
+      ],
+      "std_pre": [
+        3.6266178324103713
+      ],
+      "std_post": [
+        4.355878042921241
+      ]
+    }
   },
   "high_level_w1_uv": {
-    "mean_pre": [
-      1.162177,
-      1.162177
-    ],
-    "mean_post": [
-      1.097183,
-      1.097183
-    ],
-    "std_pre": [
-      0.368893,
-      0.368893
-    ],
-    "std_post": [
-      0.403042,
-      0.403042
-    ]
+    "nexp": {
+      "mean_pre": [
+        1.1621765432749027,
+        1.1621765432749027
+      ],
+      "mean_post": [
+        1.0971834943464467,
+        1.0971834943464467
+      ],
+      "std_pre": [
+        0.3688927861773719,
+        0.3688927861773719
+      ],
+      "std_post": [
+        0.40304153614494087,
+        0.40304153614494087
+      ]
+    },
+    "ma": {
+      "mean_pre": [
+        1.1621765432749027,
+        1.1621765432749027
+      ],
+      "mean_post": [
+        0.6136612814898276,
+        0.6136612814898276
+      ],
+      "std_pre": [
+        0.3688927861773719,
+        0.3688927861773719
+      ],
+      "std_post": [
+        0.24860102067109313,
+        0.24860102067109313
+      ]
+    }
   },
   "high_level_w5_uv": {
-    "mean_pre": [
-      0.676137,
-      0.676137
-    ],
-    "mean_post": [
-      0.748492,
-      0.748492
-    ],
-    "std_pre": [
-      0.166796,
-      0.166796
-    ],
-    "std_post": [
-      0.232989,
-      0.232989
-    ]
+    "nexp": {
+      "mean_pre": [
+        0.6761371518935954,
+        0.6761371518935954
+      ],
+      "mean_post": [
+        0.7484916608849289,
+        0.7484916608849289
+      ],
+      "std_pre": [
+        0.16679633541191882,
+        0.16679633541191882
+      ],
+      "std_post": [
+        0.23298852226764305,
+        0.23298852226764305
+      ]
+    },
+    "ma": {
+      "mean_pre": [
+        0.6761371518935954,
+        0.6761371518935954
+      ],
+      "mean_post": [
+        0.5170163916733245,
+        0.5170163916733245
+      ],
+      "std_pre": [
+        0.16679633541191882,
+        0.16679633541191882
+      ],
+      "std_post": [
+        0.14532609355546358,
+        0.14532609355546358
+      ]
+    }
+  },
+  "notes": {
+    "threshold_proxy": "'LFA' (low-frequency pure-tone average) stands in for a click ABR threshold; the CSV has no true click threshold. HFA/EHFA were not used.",
+    "frequencies_hz": "[0] is a placeholder pseudo-frequency, not a real stimulus frequency: there is only one Wave-I/Wave-V amplitude per subject (no per-frequency series), so the mandatory trailing 'tone average' entry duplicates the same single value.",
+    "nan_handling": "A few subjects have the literal string 'NaN' in w1/w5; those are excluded from the mean/std for w1/w5 only (not dropped from 'subjects' or from the threshold field).",
+    "group_stats": {
+      "nexp": "ctrl n=55 (LFA), 54/55 valid w1, 54/55 valid w5; nexp n=53 (LFA), 53/53 valid w1, 53/53 valid w5",
+      "ma": "ctrl n=55 (LFA), 54/55 valid w1, 54/55 valid w5; ma n=58 (LFA), 55/58 valid w1, 55/58 valid w5"
+    },
+    "generated_by": "scripts/generate_human_abr_summary.py"
   }
 }

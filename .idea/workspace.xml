@@ -28,7 +28,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/tests/test_experiment.py</url>
-          <line>332</line>
+          <line>334</line>
           <option name="timeStamp" value="6" />
         </line-breakpoint>
       </breakpoints>

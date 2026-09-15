@@ -322,8 +322,10 @@ class TestCli:
 
   def test_cli_species_human_labels_outputs(self, tmp_path: pathlib.Path):
     human_files = SPECIES_DATA_FILES["human"]
-    if not (DEFAULT_DATA_DIR / human_files.per_subject_file_name).is_file():
-      pytest.skip("Human per-subject CSV not yet shipped in data/.")
+    if not (DEFAULT_DATA_DIR / human_files.per_subject_file_name).is_file() or not (
+      DEFAULT_DATA_DIR / human_files.summary_file_name
+    ).is_file():
+      pytest.skip("Human dataset (per-subject CSV + summary JSON) not yet fully shipped in data/.")
 
     runner = CliRunner()
     result = runner.invoke(
@@ -333,11 +335,47 @@ class TestCli:
     assert result.exit_code == 0
     assert "Species: human" in result.output
     assert "Empirical comparison against human reference data" in result.output
-    assert (tmp_path / "empirical_comparison_human.png").exists()
-    assert (tmp_path / "simulation_report_human.md").exists()
+    # Human has more than one comparison_labels option (nexp, ma), so the
+    # species-labelled outputs are additionally suffixed by comparison group
+    # (here the default, "nexp") to avoid the two runs overwriting each other.
+    assert (tmp_path / "empirical_comparison_human_nexp.png").exists()
+    assert (tmp_path / "simulation_report_human_nexp.md").exists()
     # Growth curves don't depend on species, so they're never suffixed.
     assert (tmp_path / "abr_wave_i_growth.png").exists()
     assert (tmp_path / "efr_growth.png").exists()
+
+  def test_cli_species_human_comparison_group_ma(self, tmp_path: pathlib.Path):
+    human_files = SPECIES_DATA_FILES["human"]
+    if not (DEFAULT_DATA_DIR / human_files.per_subject_file_name).is_file() or not (
+      DEFAULT_DATA_DIR / human_files.summary_file_name
+    ).is_file():
+      pytest.skip("Human dataset (per-subject CSV + summary JSON) not yet fully shipped in data/.")
+
+    runner = CliRunner()
+    result = runner.invoke(
+      main,
+      [
+        "--quick",
+        "--plot",
+        "--species",
+        "human",
+        "--comparison-group",
+        "ma",
+        "--output-dir",
+        str(tmp_path),
+      ],
+    )
+    assert result.exit_code == 0
+    assert "comparison group: ma" in result.output
+    assert (tmp_path / "empirical_comparison_human_ma.png").exists()
+    assert (tmp_path / "simulation_report_human_ma.md").exists()
+
+  def test_cli_rejects_unknown_comparison_group(self):
+    runner = CliRunner()
+    result = runner.invoke(
+      main, ["--species", "human", "--comparison-group", "bogus", "--no-plot"]
+    )
+    assert result.exit_code != 0
 
   def test_cli_rejects_unknown_species(self):
     runner = CliRunner()
