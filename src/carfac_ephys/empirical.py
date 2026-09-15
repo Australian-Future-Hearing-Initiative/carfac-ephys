@@ -21,10 +21,6 @@ from collections.abc import Sequence
 # a regular (non-zipped) install, which is what pip and uv produce.
 DEFAULT_DATA_DIR: pathlib.Path = pathlib.Path(str(importlib.resources.files(__package__))) / "data"
 
-# File names of the empirical data files within the data directory.
-SUMMARY_FILE_NAME: str = "chinchilla_abr_summary.json"
-PER_ANIMAL_FILE_NAME: str = "chinABR_HighLevel_uV_4k_8k_ave.csv"
-
 # Frequency key used for the broadband click condition.
 CLICK_FREQUENCY_HZ: float = 0.0
 
