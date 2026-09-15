@@ -67,6 +67,16 @@ DEFAULT_EFR_LEVELS_DB: tuple[float, ...] = (40.0, 50.0, 60.0, 70.0, 80.0)
 DEFAULT_TONE_BURST_FREQUENCIES_HZ: tuple[float, float] = (4000.0, 8000.0)
 DEFAULT_TONE_BURST_LEVELS_DB: tuple[float, ...] = (30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
 
+CALIBRATION_STRATEGIES: tuple[str, ...] = ("individual", "mode-dependent", "unified")
+CALIBRATION_REFERENCES: tuple[str, ...] = ("average", "click", "4k", "8k")
+
+
+class CalibrationConfig(NamedTuple):
+  """Configuration specifying calibration strategy and reference stimulus."""
+
+  strategy: str = "individual"
+  reference: str = "average"
+
 
 def _normalize_cohort_condition(
   name: str,
@@ -262,6 +272,7 @@ class ToneBurstCohortResults(NamedTuple):
   composite_results: dict[str, list[float]]
   levels_db: tuple[float, ...]
   frequencies_hz: tuple[float, ...]
+  high_f_factor: float = 0.0
 
   @property
   def results_4k(self) -> dict[str, list[float]]:
@@ -289,6 +300,7 @@ def simulate_tone_burst_abr_series(
   delay_s: float = 0.005,
   window_s: float = 0.008,
   mode: str = "baseline_to_peak",
+  high_f_factor: float = 0.0,
 ) -> dict[str, list[float]]:
   """Runs ABR Wave-I tone-burst level series across cohort conditions.
 
@@ -306,6 +318,7 @@ def simulate_tone_burst_abr_series(
     delay_s: Stimulus onset delay in seconds.
     window_s: Analysis window duration following onset in seconds.
     mode: Wave-I extraction mode ('baseline_to_peak' or 'peak_to_trough').
+    high_f_factor: CARFAC factor adjusting high-frequency channel distribution and damping.
 
   Returns:
     Dictionary mapping condition name to list of Wave-I onset amplitudes in arbitrary units.
@@ -328,6 +341,7 @@ def simulate_tone_burst_abr_series(
       ohc_health=condition.ohc_health,
       fiber_retention=condition.fiber_retention,
       fs=sample_rate,
+      high_f_factor=high_f_factor,
     )
     amps: list[float] = []
 
@@ -388,6 +402,7 @@ def simulate_tone_burst_cohort(
   delay_s: float = 0.005,
   window_s: float = 0.008,
   mode: str = "baseline_to_peak",
+  high_f_factor: float = 0.0,
 ) -> ToneBurstCohortResults:
   """Simulates tone-burst ABR level sweeps across multiple frequencies and cohorts.
 
@@ -404,6 +419,7 @@ def simulate_tone_burst_cohort(
     delay_s: Stimulus onset delay in seconds.
     window_s: Analysis window duration following onset in seconds.
     mode: Wave-I extraction mode.
+    high_f_factor: CARFAC factor adjusting high-frequency channel distribution and damping.
 
   Returns:
     ToneBurstCohortResults holding per-frequency results and composite average results.
@@ -425,6 +441,7 @@ def simulate_tone_burst_cohort(
       delay_s=delay_s,
       window_s=window_s,
       mode=mode,
+      high_f_factor=high_f_factor,
     )
 
   # Compute composite average across frequencies for each condition and level.
@@ -445,6 +462,7 @@ def simulate_tone_burst_cohort(
     composite_results=composite_results,
     levels_db=tuple(float(lvl) for lvl in tone_burst_levels_db),
     frequencies_hz=tuple(float(f) for f in frequencies_hz),
+    high_f_factor=float(high_f_factor),
   )
 
 
@@ -457,6 +475,7 @@ def simulate_tone_burst_waveforms(
   ramp_s: float = 0.0005,
   delay_s: float = 0.005,
   total_duration_s: float = 0.02,
+  high_f_factor: float = 0.0,
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
   """Generates averaged population response waveforms across cohorts for a tone burst.
 
@@ -469,6 +488,7 @@ def simulate_tone_burst_waveforms(
     ramp_s: Linear onset and offset ramp duration in seconds.
     delay_s: Stimulus onset delay in seconds.
     total_duration_s: Total duration of the simulation buffer in seconds.
+    high_f_factor: CARFAC factor adjusting high-frequency channel distribution and damping.
 
   Returns:
     Tuple of (time_ms, waveforms_by_cohort) where time_ms is a 1D array of time
@@ -514,6 +534,7 @@ def simulate_tone_burst_waveforms(
       ohc_health=condition.ohc_health,
       fiber_retention=condition.fiber_retention,
       fs=sample_rate,
+      high_f_factor=high_f_factor,
     )
     # Positive run.
     model.reset()
@@ -675,6 +696,130 @@ def fit_response_scale_uv_per_au(
   return electrophysiology.fit_microvolts_per_au([simulated_au], [measured_uv])
 
 
+def resolve_scale_factor(
+  strategy: str = "individual",
+  stimulus_type: str | float | None = "click",
+  click_results: Mapping[str, Sequence[float]] | None = None,
+  tone_burst_results: ToneBurstCohortResults | None = None,
+  click_levels_db: Sequence[float] | None = None,
+  tone_burst_levels_db: Sequence[float] | None = None,
+  reference: str = "average",
+  dataset: empirical.ChinchillaAbrDataset | None = None,
+  condition: str = BASELINE_CONDITION,
+  level_db: float = CALIBRATION_LEVEL_DB,
+) -> float:
+  """Resolves the scale factor (uV/AU) for a stimulus under a given calibration strategy.
+
+  Strategies:
+    - 'individual': Each stimulus (click, 4k, 8k, average) is calibrated to its
+      own 80 dB pre-exposure amplitude.
+    - 'mode-dependent': Clicks use the click factor, while tone-bursts share
+      a single factor determined by `reference` ('average', '4k', or '8k').
+    - 'unified': All stimuli share a single factor determined by `reference`
+      ('click', 'average', '4k', or '8k').
+
+  Args:
+    strategy: Calibration strategy ('individual', 'mode-dependent', or 'unified').
+    stimulus_type: Target stimulus ('click', '4k' or 4000.0, '8k' or 8000.0, 'average' or None).
+    click_results: Click ABR simulation results mapping.
+    tone_burst_results: ToneBurstCohortResults instance.
+    click_levels_db: Sequence of click levels in dB SPL.
+    tone_burst_levels_db: Sequence of tone burst levels in dB SPL.
+    reference: Reference stimulus used for shared scaling ('average', 'click', '4k', '8k').
+    dataset: ChinchillaAbrDataset instance.
+    condition: Baseline cohort name (default 'Control').
+    level_db: Calibration level in dB SPL (default 80.0).
+
+  Returns:
+    Scale factor in uV/AU.
+  """
+  strategy_norm = str(strategy).lower()
+  if strategy_norm not in CALIBRATION_STRATEGIES:
+    raise ValueError(
+      f"Unknown calibration strategy '{strategy}'. Valid options: {CALIBRATION_STRATEGIES}"
+    )
+  reference_norm = str(reference).lower()
+  if reference_norm not in CALIBRATION_REFERENCES:
+    raise ValueError(
+      f"Unknown calibration reference '{reference}'. Valid options: {CALIBRATION_REFERENCES}"
+    )
+
+  # Normalize target stimulus identifier.
+  if stimulus_type in ("click", empirical.CLICK_FREQUENCY_HZ, 0.0, 0):
+    norm_stim = "click"
+  elif stimulus_type in ("4k", 4000.0, "4000", 4000):
+    norm_stim = "4k"
+  elif stimulus_type in ("8k", 8000.0, "8000", 8000):
+    norm_stim = "8k"
+  elif stimulus_type in ("average", "composite", None):
+    norm_stim = "average"
+  else:
+    raise ValueError(
+      f"Unrecognized stimulus_type '{stimulus_type}'. Expected 'click', '4k', '8k', or 'average'."
+    )
+
+  # Determine which physical stimulus reference to scale against based on strategy.
+  if strategy_norm == "individual":
+    effective_ref = norm_stim
+  elif strategy_norm == "mode-dependent":
+    effective_ref = "click" if norm_stim == "click" else reference_norm
+  elif strategy_norm == "unified":
+    effective_ref = reference_norm
+  else:
+    raise ValueError(f"Unsupported strategy: {strategy_norm}")
+
+  # Compute the scale factor for effective_ref.
+  if effective_ref == "click":
+    if click_results is None:
+      raise ValueError("click_results required to fit click scale factor.")
+    levels = click_levels_db if click_levels_db is not None else DEFAULT_CLICK_LEVELS_DB
+    return fit_response_scale_uv_per_au(
+      levels_db=levels,
+      abr_results=click_results,
+      dataset=dataset,
+      condition=condition,
+      level_db=level_db,
+      frequency_hz=empirical.CLICK_FREQUENCY_HZ,
+    )
+  elif effective_ref == "4k":
+    if tone_burst_results is None:
+      raise ValueError("tone_burst_results required to fit 4 kHz tone-burst scale factor.")
+    levels = tone_burst_levels_db if tone_burst_levels_db is not None else tone_burst_results.levels_db
+    return fit_response_scale_uv_per_au(
+      levels_db=levels,
+      abr_results=tone_burst_results.results_4k,
+      dataset=dataset,
+      condition=condition,
+      level_db=level_db,
+      frequency_hz=4000.0,
+    )
+  elif effective_ref == "8k":
+    if tone_burst_results is None:
+      raise ValueError("tone_burst_results required to fit 8 kHz tone-burst scale factor.")
+    levels = tone_burst_levels_db if tone_burst_levels_db is not None else tone_burst_results.levels_db
+    return fit_response_scale_uv_per_au(
+      levels_db=levels,
+      abr_results=tone_burst_results.results_8k,
+      dataset=dataset,
+      condition=condition,
+      level_db=level_db,
+      frequency_hz=8000.0,
+    )
+  elif effective_ref == "average":
+    if tone_burst_results is None:
+      raise ValueError("tone_burst_results required to fit composite average tone-burst scale factor.")
+    levels = tone_burst_levels_db if tone_burst_levels_db is not None else tone_burst_results.levels_db
+    return fit_response_scale_uv_per_au(
+      levels_db=levels,
+      abr_results=tone_burst_results.composite_results,
+      dataset=dataset,
+      condition=condition,
+      level_db=level_db,
+      frequency_hz=None,
+    )
+  else:
+    raise ValueError(f"Unhandled reference: {effective_ref}")
+
 
 def format_ascii_table(
   title: str,
@@ -835,11 +980,17 @@ def plot_abr_growth(
   )
 
 
+def format_8k_title(base_title: str = "8 kHz Tone Burst", high_f_factor: float = 0.0) -> str:
+  """Formats 8 kHz title with high_f_factor annotation."""
+  return f"{base_title} (high_f={high_f_factor:g})"
+
+
 def plot_tone_burst_waveforms(
   waveforms_4k: tuple[np.ndarray, Mapping[str, np.ndarray]],
   waveforms_8k: tuple[np.ndarray, Mapping[str, np.ndarray]],
   output_path: str | pathlib.Path,
   level_db: float = 80.0,
+  high_f_factor: float = 0.0,
 ) -> pathlib.Path:
   """Plots horizontal side-by-side waveforms for 4 kHz and 8 kHz tone bursts across cohorts.
 
@@ -848,6 +999,7 @@ def plot_tone_burst_waveforms(
     waveforms_8k: Tuple of (time_s, mapping of cohort_name -> waveform) for 8 kHz.
     output_path: Path to save the output figure image.
     level_db: Sound level in dB SPL used for the waveforms (default: 80.0).
+    high_f_factor: CARFAC high_f_factor parameter.
 
   Returns:
     Path to the saved figure.
@@ -859,7 +1011,7 @@ def plot_tone_burst_waveforms(
 
   panels = [
     (ax1, waveforms_4k, "4 kHz Tone Burst (5 ms)"),
-    (ax2, waveforms_8k, "8 kHz Tone Burst (5 ms)"),
+    (ax2, waveforms_8k, format_8k_title("8 kHz Tone Burst (5 ms)", high_f_factor)),
   ]
 
   for ax, (t_s, waveforms), title in panels:
@@ -946,7 +1098,7 @@ def plot_tone_burst_growth(
 
   sub_panels = [
     (axes[0], results.results_4k, "4 kHz Tone Burst"),
-    (axes[1], results.results_8k, "8 kHz Tone Burst"),
+    (axes[1], results.results_8k, format_8k_title("8 kHz Tone Burst", results.high_f_factor)),
     (axes[2], results.results_avg, "4/8 kHz Composite Average"),
   ]
 
@@ -1015,7 +1167,7 @@ def plot_tone_burst_individual_growth(
     results.levels_db,
     results.results_8k,
     out_dir / "abr_wave_i_growth_8k.png",
-    stimulus_label="8 kHz Tone Burst",
+    stimulus_label=format_8k_title("8 kHz Tone Burst", results.high_f_factor),
   )
   path_avg = plot_abr_growth(
     results.levels_db,
@@ -1217,21 +1369,25 @@ def _simulated_threshold_shift_db(
   condition: str,
   baseline: str,
   frequency_hz: float | None = empirical.CLICK_FREQUENCY_HZ,
+  scale_uv_per_au: float | None = None,
 ) -> float | None:
   """Computes the exposed minus baseline threshold shift of the simulation."""
   if baseline not in abr_results or condition not in abr_results:
     return None
 
   # Express the microvolt threshold criterion in model units.
-  try:
-    scale_uv_per_au = fit_response_scale_uv_per_au(
-      levels_db=levels_db,
-      abr_results=abr_results,
-      dataset=dataset,
-      condition=baseline,
-      frequency_hz=frequency_hz,
-    )
-  except (ValueError, KeyError):
+  if scale_uv_per_au is None:
+    try:
+      scale_uv_per_au = fit_response_scale_uv_per_au(
+        levels_db=levels_db,
+        abr_results=abr_results,
+        dataset=dataset,
+        condition=baseline,
+        frequency_hz=frequency_hz,
+      )
+    except (ValueError, KeyError):
+      return None
+  if scale_uv_per_au is None or scale_uv_per_au <= 0.0:
     return None
   criterion_au = THRESHOLD_CRITERION_UV / scale_uv_per_au
 
@@ -1249,6 +1405,7 @@ def compare_to_empirical(
   dataset: empirical.ChinchillaAbrDataset | None = None,
   condition: str = EXPOSED_CONDITION,
   baseline: str = BASELINE_CONDITION,
+  scale_uv_per_au: float | None = None,
 ) -> EmpiricalComparison:
   """Compares simulated ABR thresholds and Wave-I growth against chinchilla data.
 
@@ -1262,6 +1419,7 @@ def compare_to_empirical(
     dataset: Empirical dataset; loaded from package data when None.
     condition: Cohort standing in for the noise-exposed animals.
     baseline: Cohort treated as the healthy, pre-exposure baseline.
+    scale_uv_per_au: Optional pre-fitted microvolts per AU scale factor.
 
   Returns:
     Record of the simulated values, the animal values, and their agreement.
@@ -1271,7 +1429,12 @@ def compare_to_empirical(
   # Compare the click threshold shift, which the animals recovered.
   animal_shift_db = data.click_threshold_shift_db
   simulated_shift_db = _simulated_threshold_shift_db(
-    click_levels_db, abr_results, data, condition, baseline
+    click_levels_db,
+    abr_results,
+    data,
+    condition,
+    baseline,
+    scale_uv_per_au=scale_uv_per_au,
   )
   shift_matched = None
   if simulated_shift_db is not None:
@@ -1366,6 +1529,10 @@ def compare_tone_burst_to_empirical(
   level_db: float = CALIBRATION_LEVEL_DB,
   tolerance: float = W1_RATIO_TOLERANCE,
   threshold_tolerance_db: float = THRESHOLD_SHIFT_TOLERANCE_DB,
+  calibration_strategy: str = "individual",
+  calibration_reference: str = "average",
+  click_results: Mapping[str, Sequence[float]] | None = None,
+  click_levels_db: Sequence[float] | None = None,
 ) -> list[ToneBurstEmpiricalComparison]:
   """Compares simulated tone-burst metrics against animal data.
 
@@ -1381,6 +1548,10 @@ def compare_tone_burst_to_empirical(
     level_db: Calibration sound level in dB SPL (default 80.0).
     tolerance: Maximum allowed absolute difference between model and animal.
     threshold_tolerance_db: Maximum allowed threshold difference in dB.
+    calibration_strategy: Calibration strategy ('individual', 'mode-dependent', 'unified').
+    calibration_reference: Reference stimulus for shared scaling ('average', 'click', '4k', '8k').
+    click_results: Click ABR simulation results mapping.
+    click_levels_db: Click sound levels in dB SPL.
 
   Returns:
     List of ToneBurstEmpiricalComparison records.
@@ -1406,6 +1577,23 @@ def compare_tone_burst_to_empirical(
         else None
       )
 
+      # Resolve scale factor according to chosen strategy
+      try:
+        scale_val = resolve_scale_factor(
+          strategy=calibration_strategy,
+          stimulus_type=freq,
+          click_results=click_results,
+          tone_burst_results=tone_burst_results,
+          click_levels_db=click_levels_db,
+          tone_burst_levels_db=tone_burst_results.levels_db,
+          reference=calibration_reference,
+          dataset=data,
+          condition=baseline,
+          level_db=level_db,
+        )
+      except Exception:
+        scale_val = None
+
       # Threshold shift comparison
       sim_shift_db = _simulated_threshold_shift_db(
         levels_db=tone_burst_results.levels_db,
@@ -1414,6 +1602,7 @@ def compare_tone_burst_to_empirical(
         condition=condition,
         baseline=baseline,
         frequency_hz=freq,
+        scale_uv_per_au=scale_val,
       )
       animal_shift_db = data.threshold_shift_db(freq) if freq in data.thresholds_db_spl else 0.0
       shift_matched = (
@@ -1448,6 +1637,22 @@ def compare_tone_burst_to_empirical(
       else None
     )
 
+    try:
+      scale_val_avg = resolve_scale_factor(
+        strategy=calibration_strategy,
+        stimulus_type="average",
+        click_results=click_results,
+        tone_burst_results=tone_burst_results,
+        click_levels_db=click_levels_db,
+        tone_burst_levels_db=tone_burst_results.levels_db,
+        reference=calibration_reference,
+        dataset=data,
+        condition=baseline,
+        level_db=level_db,
+      )
+    except Exception:
+      scale_val_avg = None
+
     sim_shift_db = _simulated_threshold_shift_db(
       levels_db=tone_burst_results.levels_db,
       abr_results=composite,
@@ -1455,6 +1660,7 @@ def compare_tone_burst_to_empirical(
       condition=condition,
       baseline=baseline,
       frequency_hz=None,
+      scale_uv_per_au=scale_val_avg,
     )
     shift_4k = data.threshold_shift_db(4000.0) if 4000.0 in data.thresholds_db_spl else 0.0
     shift_8k = data.threshold_shift_db(8000.0) if 8000.0 in data.thresholds_db_spl else 0.0
@@ -1755,18 +1961,23 @@ def format_calibration_line(
   abr_results: Mapping[str, Sequence[float]],
   frequency_hz: float | None = empirical.CLICK_FREQUENCY_HZ,
   stimulus_name: str | None = None,
+  scale_uv_per_au: float | None = None,
+  strategy: str | None = None,
 ) -> str:
   """Renders the fitted microvolt scale, or a note when it cannot be fitted.
 
   The line is plain text because both the markdown report and the CLI print it
   verbatim.
   """
-  try:
-    scale = fit_response_scale_uv_per_au(
-      click_levels_db, abr_results, frequency_hz=frequency_hz
-    )
-  except (ValueError, KeyError, FileNotFoundError) as error:
-    return f"Scale factor unavailable: {error}"
+  if scale_uv_per_au is None:
+    try:
+      scale = fit_response_scale_uv_per_au(
+        click_levels_db, abr_results, frequency_hz=frequency_hz
+      )
+    except (ValueError, KeyError, FileNotFoundError) as error:
+      return f"Scale factor unavailable: {error}"
+  else:
+    scale = scale_uv_per_au
 
   if frequency_hz == empirical.CLICK_FREQUENCY_HZ:
     stim_desc = "click Wave-I amplitude"
@@ -1778,8 +1989,9 @@ def format_calibration_line(
   if stimulus_name:
     stim_desc = f"{stimulus_name} ({stim_desc})"
 
+  strat_note = f" [strategy: {strategy}]" if strategy else ""
   return (
-    f"Fitted scale factor: {scale:.4g} uV/{electrophysiology.RESPONSE_UNIT}, matching the "
+    f"Fitted scale factor: {scale:.4g} uV/{electrophysiology.RESPONSE_UNIT}{strat_note}, matching the "
     f"{BASELINE_CONDITION} response at {CALIBRATION_LEVEL_DB:g} dB SPL to the pre-exposure "
     f"chinchilla {stim_desc} (Bharadwaj et al. 2022)."
   )
