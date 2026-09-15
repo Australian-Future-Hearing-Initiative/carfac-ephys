@@ -64,6 +64,8 @@ DEFAULT_COHORT_CONDITIONS: tuple[CohortCondition, ...] = (
 
 DEFAULT_CLICK_LEVELS_DB: tuple[float, ...] = (30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
 DEFAULT_EFR_LEVELS_DB: tuple[float, ...] = (40.0, 50.0, 60.0, 70.0, 80.0)
+DEFAULT_TONE_BURST_FREQUENCIES_HZ: tuple[float, float] = (4000.0, 8000.0)
+DEFAULT_TONE_BURST_LEVELS_DB: tuple[float, float, float] = (60.0, 70.0, 80.0)
 
 
 def _normalize_cohort_condition(
@@ -253,6 +255,282 @@ def simulate_abr_level_series(
   return results
 
 
+class ToneBurstCohortResults(NamedTuple):
+  """Container for multi-frequency tone burst simulation results."""
+
+  results_by_frequency: dict[float, dict[str, list[float]]]
+  composite_results: dict[str, list[float]]
+  levels_db: tuple[float, ...]
+  frequencies_hz: tuple[float, ...]
+
+  @property
+  def results_4k(self) -> dict[str, list[float]]:
+    """Convenience accessor for 4 kHz simulation results."""
+    return self.results_by_frequency.get(4000.0, {})
+
+  @property
+  def results_8k(self) -> dict[str, list[float]]:
+    """Convenience accessor for 8 kHz simulation results."""
+    return self.results_by_frequency.get(8000.0, {})
+
+  @property
+  def results_avg(self) -> dict[str, list[float]]:
+    """Convenience accessor for 4/8 kHz composite average results."""
+    return self.composite_results
+
+
+def simulate_tone_burst_abr_series(
+  frequency_hz: float = 4000.0,
+  cohort: Cohort | Mapping[str, Any] | Sequence[CohortCondition] | None = None,
+  tone_burst_levels_db: Sequence[float] = DEFAULT_TONE_BURST_LEVELS_DB,
+  sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
+  duration_s: float = 0.005,
+  ramp_s: float = 0.0005,
+  delay_s: float = 0.005,
+  window_s: float = 0.008,
+  mode: str = "baseline_to_peak",
+) -> dict[str, list[float]]:
+  """Runs ABR Wave-I tone-burst level series across cohort conditions.
+
+  Uses alternating polarity (+1 and -1) burst presentation and averages
+  the evoked population firing rates to cancel the phase-locked cochlear
+  microphonic / stimulus artifact and isolate the neural Wave-I peak.
+
+  Args:
+    frequency_hz: Carrier frequency in Hz (default 4000.0).
+    cohort: Cohort instance or mapping of conditions. Defaults to standard cohort.
+    tone_burst_levels_db: Sequence of sound levels in dB SPL.
+    sample_rate: Sampling rate in Hz.
+    duration_s: Burst duration in seconds (default 5 ms).
+    ramp_s: Linear onset and offset ramp duration in seconds (default 0.5 ms).
+    delay_s: Stimulus onset delay in seconds.
+    window_s: Analysis window duration following onset in seconds.
+    mode: Wave-I extraction mode ('baseline_to_peak' or 'peak_to_trough').
+
+  Returns:
+    Dictionary mapping condition name to list of Wave-I onset amplitudes in arbitrary units.
+  """
+  # Validate input parameters.
+  if sample_rate <= 0:
+    raise ValueError("sample_rate must be positive.")
+  if not tone_burst_levels_db:
+    raise ValueError("tone_burst_levels_db sequence cannot be empty.")
+  if frequency_hz <= 0.0:
+    raise ValueError("frequency_hz must be positive.")
+
+  # Resolve cohort specifications.
+  resolved_cohort = _resolve_cohort(cohort)
+  results: dict[str, list[float]] = {}
+
+  # Iterate through each condition.
+  for condition in resolved_cohort.values():
+    model = carfac_model.build_model(
+      ohc_health=condition.ohc_health,
+      fiber_retention=condition.fiber_retention,
+      fs=sample_rate,
+    )
+    amps: list[float] = []
+
+    # Run level sweep.
+    for level in tone_burst_levels_db:
+      # Positive polarity run.
+      model.reset()
+      w_pos = stimuli.generate_tone_burst(
+        frequency_hz=frequency_hz,
+        duration_s=duration_s,
+        sample_rate=sample_rate,
+        peak_db_spl=float(level),
+        ramp_s=ramp_s,
+        delay_s=delay_s,
+        polarity=1,
+      )
+      naps_pos = model.run(w_pos)
+      pop_pos = electrophysiology.compute_population_rate(naps_pos)
+
+      # Negative polarity run.
+      model.reset()
+      w_neg = stimuli.generate_tone_burst(
+        frequency_hz=frequency_hz,
+        duration_s=duration_s,
+        sample_rate=sample_rate,
+        peak_db_spl=float(level),
+        ramp_s=ramp_s,
+        delay_s=delay_s,
+        polarity=-1,
+      )
+      naps_neg = model.run(w_neg)
+      pop_neg = electrophysiology.compute_population_rate(naps_neg)
+
+      # Average responses across alternating polarities.
+      pop_avg = 0.5 * (pop_pos + pop_neg)
+
+      amp = electrophysiology.extract_wave_i_amplitude(
+        pop_avg,
+        sample_rate=sample_rate,
+        stimulus_onset_s=delay_s,
+        window_s=window_s,
+        mode=mode,
+      )
+      amps.append(float(amp))
+
+    results[condition.name] = amps
+
+  return results
+
+
+def simulate_tone_burst_cohort(
+  cohort: Cohort | Mapping[str, Any] | Sequence[CohortCondition] | None = None,
+  frequencies_hz: Sequence[float] = DEFAULT_TONE_BURST_FREQUENCIES_HZ,
+  tone_burst_levels_db: Sequence[float] = DEFAULT_TONE_BURST_LEVELS_DB,
+  sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
+  duration_s: float = 0.005,
+  ramp_s: float = 0.0005,
+  delay_s: float = 0.005,
+  window_s: float = 0.008,
+  mode: str = "baseline_to_peak",
+) -> ToneBurstCohortResults:
+  """Simulates tone-burst ABR level sweeps across multiple frequencies and cohorts.
+
+  Computes individual frequency level series (e.g. 4 kHz and 8 kHz) and their
+  composite mean growth functions across all cohort conditions.
+
+  Args:
+    cohort: Cohort instance or mapping of conditions.
+    frequencies_hz: Sequence of carrier frequencies in Hz.
+    tone_burst_levels_db: Sequence of sound levels in dB SPL.
+    sample_rate: Sampling rate in Hz.
+    duration_s: Burst duration in seconds.
+    ramp_s: Linear onset and offset ramp duration in seconds.
+    delay_s: Stimulus onset delay in seconds.
+    window_s: Analysis window duration following onset in seconds.
+    mode: Wave-I extraction mode.
+
+  Returns:
+    ToneBurstCohortResults holding per-frequency results and composite average results.
+  """
+  if not frequencies_hz:
+    raise ValueError("frequencies_hz cannot be empty.")
+
+  resolved_cohort = _resolve_cohort(cohort)
+  results_by_freq: dict[float, dict[str, list[float]]] = {}
+
+  for freq in frequencies_hz:
+    results_by_freq[float(freq)] = simulate_tone_burst_abr_series(
+      frequency_hz=float(freq),
+      cohort=resolved_cohort,
+      tone_burst_levels_db=tone_burst_levels_db,
+      sample_rate=sample_rate,
+      duration_s=duration_s,
+      ramp_s=ramp_s,
+      delay_s=delay_s,
+      window_s=window_s,
+      mode=mode,
+    )
+
+  # Compute composite average across frequencies for each condition and level.
+  composite_results: dict[str, list[float]] = {}
+  cond_names = list(resolved_cohort.keys())
+  n_levels = len(tone_burst_levels_db)
+  n_freqs = len(frequencies_hz)
+
+  for name in cond_names:
+    avg_levels: list[float] = []
+    for l_idx in range(n_levels):
+      mean_val = sum(results_by_freq[float(f)][name][l_idx] for f in frequencies_hz) / float(n_freqs)
+      avg_levels.append(float(mean_val))
+    composite_results[name] = avg_levels
+
+  return ToneBurstCohortResults(
+    results_by_frequency=results_by_freq,
+    composite_results=composite_results,
+    levels_db=tuple(float(lvl) for lvl in tone_burst_levels_db),
+    frequencies_hz=tuple(float(f) for f in frequencies_hz),
+  )
+
+
+def simulate_tone_burst_waveforms(
+  frequency_hz: float = 4000.0,
+  cohort: Cohort | Mapping[str, Any] | Sequence[CohortCondition] | None = None,
+  level_db: float = 80.0,
+  sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
+  duration_s: float = 0.005,
+  ramp_s: float = 0.0005,
+  delay_s: float = 0.005,
+  total_duration_s: float = 0.02,
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+  """Generates averaged population response waveforms across cohorts for a tone burst.
+
+  Args:
+    frequency_hz: Carrier frequency in Hz (default 4000.0).
+    cohort: Cohort instance or mapping of conditions.
+    level_db: Sound level in dB SPL (default 80.0).
+    sample_rate: Sampling rate in Hz.
+    duration_s: Burst duration in seconds.
+    ramp_s: Linear onset and offset ramp duration in seconds.
+    delay_s: Stimulus onset delay in seconds.
+    total_duration_s: Total duration of the simulation buffer in seconds.
+
+  Returns:
+    Tuple of (time_ms, waveforms_by_cohort) where time_ms is a 1D array of time
+    in milliseconds, and waveforms_by_cohort maps condition name to 1D population
+    rate array in arbitrary units.
+  """
+  if total_duration_s < delay_s + duration_s:
+    raise ValueError("total_duration_s cannot be less than delay_s + duration_s.")
+
+  resolved_cohort = _resolve_cohort(cohort)
+  n_total = int(round(total_duration_s * sample_rate))
+  time_ms = 1000.0 * np.arange(n_total, dtype=np.float64) / sample_rate
+
+  # Synthesize positive and negative polarity bursts padded to total_duration_s.
+  w_pos_raw = stimuli.generate_tone_burst(
+    frequency_hz=frequency_hz,
+    duration_s=duration_s,
+    sample_rate=sample_rate,
+    peak_db_spl=level_db,
+    ramp_s=ramp_s,
+    delay_s=delay_s,
+    polarity=1,
+  )
+  w_pos = np.zeros(n_total, dtype=np.float64)
+  w_pos[: len(w_pos_raw)] = w_pos_raw
+
+  w_neg_raw = stimuli.generate_tone_burst(
+    frequency_hz=frequency_hz,
+    duration_s=duration_s,
+    sample_rate=sample_rate,
+    peak_db_spl=level_db,
+    ramp_s=ramp_s,
+    delay_s=delay_s,
+    polarity=-1,
+  )
+  w_neg = np.zeros(n_total, dtype=np.float64)
+  w_neg[: len(w_neg_raw)] = w_neg_raw
+
+  waveforms: dict[str, np.ndarray] = {}
+
+  for condition in resolved_cohort.values():
+    model = carfac_model.build_model(
+      ohc_health=condition.ohc_health,
+      fiber_retention=condition.fiber_retention,
+      fs=sample_rate,
+    )
+    # Positive run.
+    model.reset()
+    naps_pos = model.run(w_pos)
+    pop_pos = electrophysiology.compute_population_rate(naps_pos)
+
+    # Negative run.
+    model.reset()
+    naps_neg = model.run(w_neg)
+    pop_neg = electrophysiology.compute_population_rate(naps_neg)
+
+    # Alternating polarity average.
+    waveforms[condition.name] = 0.5 * (pop_pos + pop_neg)
+
+  return time_ms, waveforms
+
+
 def simulate_efr_level_series(
   cohort: Cohort | Mapping[str, Any] | Sequence[CohortCondition] | None = None,
   efr_levels_db: Sequence[float] = DEFAULT_EFR_LEVELS_DB,
@@ -345,37 +623,57 @@ BASELINE_CONDITION: str = "Control"
 
 
 def fit_response_scale_uv_per_au(
-  click_levels_db: Sequence[float],
-  abr_results: Mapping[str, Sequence[float]],
+  click_levels_db: Sequence[float] | None = None,
+  abr_results: Mapping[str, Sequence[float]] | None = None,
   dataset: empirical.ChinchillaAbrDataset | None = None,
   level_db: float = CALIBRATION_LEVEL_DB,
   condition: str = BASELINE_CONDITION,
+  frequency_hz: float | None = empirical.CLICK_FREQUENCY_HZ,
+  levels_db: Sequence[float] | None = None,
 ) -> float:
   """Fits the microvolts per arbitrary unit scale of simulated ABR responses.
 
   Simulated responses are dimensionless, so they are calibrated against the
-  pre-exposure (healthy) click Wave-I amplitude of the chinchilla dataset.
+  pre-exposure (healthy) Wave-I amplitude of the chinchilla dataset for the
+  matching stimulus frequency.
 
   Args:
-    click_levels_db: Click sound levels in dB SPL.
+    click_levels_db: Sound levels in dB SPL (synonym for levels_db).
     abr_results: Mapping of condition name to Wave-I amplitudes in AU.
     dataset: Empirical dataset; loaded from package data when None.
-    level_db: Click level matched to the empirical high-level amplitude.
-    condition: Cohort treated as the healthy baseline.
+    level_db: Sound level matched to the empirical high-level amplitude (default 80.0).
+    condition: Cohort treated as the healthy baseline (default 'Control').
+    frequency_hz: Stimulus frequency in Hz (0 Hz denotes click, None denotes 4/8 kHz average).
+    levels_db: Sound levels in dB SPL.
 
   Returns:
     Scale factor in microvolts per arbitrary unit (> 0).
   """
+  resolved_levels = levels_db if levels_db is not None else click_levels_db
+  if resolved_levels is None:
+    raise ValueError("Must provide either levels_db or click_levels_db.")
+  if abr_results is None:
+    raise ValueError("abr_results cannot be None.")
+
   # Look up the simulated healthy response at the calibration level.
-  level_indices = {float(level): index for index, level in enumerate(click_levels_db)}
+  level_indices = {float(level): index for index, level in enumerate(resolved_levels)}
   simulated_au = _get_level_value(abr_results, level_indices, condition, level_db)
   if simulated_au is None:
     raise ValueError(f"No '{condition}' response at {level_db} dB SPL to calibrate against.")
 
-  # Match it to the empirical pre-exposure click Wave-I amplitude.
+  # Match it to empirical pre-exposure Wave-I amplitude.
   data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
-  measured_uv = data.high_level_w1_uv[empirical.CLICK_FREQUENCY_HZ].mean_pre
+  if frequency_hz == empirical.CLICK_FREQUENCY_HZ or frequency_hz == 0.0:
+    measured_uv = data.high_level_w1_uv[empirical.CLICK_FREQUENCY_HZ].mean_pre
+  elif frequency_hz is None:
+    measured_uv = data.tone_average_w1_uv.mean_pre
+  elif float(frequency_hz) in data.high_level_w1_uv:
+    measured_uv = data.high_level_w1_uv[float(frequency_hz)].mean_pre
+  else:
+    raise ValueError(f"No empirical Wave-I reference for frequency {frequency_hz} Hz.")
+
   return electrophysiology.fit_microvolts_per_au([simulated_au], [measured_uv])
+
 
 
 def format_ascii_table(
@@ -523,6 +821,7 @@ def plot_abr_growth(
   click_levels_db: Sequence[float],
   results: Mapping[str, Sequence[float]],
   output_path: str | pathlib.Path,
+  stimulus_label: str = "Broadband Click",
 ) -> pathlib.Path:
   """Plots and saves ABR Wave-I input-output functions across cohort conditions."""
   # Render ABR Wave-I growth curves.
@@ -530,10 +829,147 @@ def plot_abr_growth(
     levels_db=click_levels_db,
     results=results,
     output_path=output_path,
-    xlabel="Click Sound Level (dB SPL)",
+    xlabel=f"{stimulus_label} Sound Level (dB SPL)",
     ylabel=f"ABR Wave-I Onset Amplitude ({electrophysiology.RESPONSE_UNIT})",
-    title="ABR Wave-I Input-Output Growth Functions",
+    title=f"ABR Wave-I Input-Output Growth Functions ({stimulus_label})",
   )
+
+
+def plot_tone_burst_waveforms(
+  waveforms_4k: tuple[np.ndarray, Mapping[str, np.ndarray]],
+  waveforms_8k: tuple[np.ndarray, Mapping[str, np.ndarray]],
+  output_path: str | pathlib.Path,
+  level_db: float = 80.0,
+) -> pathlib.Path:
+  """Plots horizontal side-by-side waveforms for 4 kHz and 8 kHz tone bursts across cohorts.
+
+  Args:
+    waveforms_4k: Tuple of (time_s, mapping of cohort_name -> waveform) for 4 kHz.
+    waveforms_8k: Tuple of (time_s, mapping of cohort_name -> waveform) for 8 kHz.
+    output_path: Path to save the output figure image.
+    level_db: Sound level in dB SPL used for the waveforms (default: 80.0).
+
+  Returns:
+    Path to the saved figure.
+  """
+  path = pathlib.Path(output_path)
+  path.parent.mkdir(parents=True, exist_ok=True)
+
+  fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5), dpi=300, sharey=True)
+
+  panels = [
+    (ax1, waveforms_4k, "4 kHz Tone Burst (5 ms)"),
+    (ax2, waveforms_8k, "8 kHz Tone Burst (5 ms)"),
+  ]
+
+  for ax, (t_s, waveforms), title in panels:
+    t_ms = t_s * 1e3
+    for name, wave in waveforms.items():
+      style = COHORT_STYLES.get(
+        name,
+        {"color": "#555555", "marker": "", "linestyle": "-", "label": name},
+      )
+      ax.plot(
+        t_ms,
+        wave,
+        label=style["label"],
+        color=style["color"],
+        linestyle=style["linestyle"],
+        linewidth=1.8,
+      )
+
+    # Highlight tone-burst stimulus duration (0-5 ms)
+    ax.axvspan(0.0, 5.0, color="#d0d0d0", alpha=0.35, label="Stimulus Duration (0-5 ms)")
+    ax.set_xlabel("Time (ms)", fontsize=11, fontweight="bold")
+    ax.set_title(f"{title} @ {level_db:g} dB SPL", fontsize=12, fontweight="bold")
+    ax.grid(True, linestyle="--", alpha=0.5)
+    if len(t_ms) > 0:
+      ax.set_xlim(left=0.0, right=float(t_ms[-1]))
+
+  ax1.set_ylabel(
+    f"Neural Response Rate ({electrophysiology.RESPONSE_UNIT})",
+    fontsize=11,
+    fontweight="bold",
+  )
+  ax1.legend(frameon=True, fontsize=8.5, loc="upper right")
+
+  fig.suptitle(
+    f"Compound ABR Tone-Burst Response Waveforms ({level_db:g} dB SPL, Alternating Polarity)",
+    fontsize=13,
+    fontweight="bold",
+    y=0.98,
+  )
+  fig.tight_layout()
+  fig.savefig(path, dpi=300)
+  plt.close(fig)
+
+  return path
+
+
+def plot_tone_burst_growth(
+  results: ToneBurstCohortResults,
+  output_path: str | pathlib.Path,
+) -> pathlib.Path:
+  """Plots and saves 3-panel horizontal ABR Wave-I growth functions for tone bursts.
+
+  Panels show 4 kHz, 8 kHz, and 4/8 kHz Composite Average side-by-side across sound levels.
+
+  Args:
+    results: ToneBurstCohortResults containing levels and results for 4k, 8k, and avg.
+    output_path: Path to save the output figure image.
+
+  Returns:
+    Path to the saved figure.
+  """
+  path = pathlib.Path(output_path)
+  path.parent.mkdir(parents=True, exist_ok=True)
+
+  fig, axes = plt.subplots(1, 3, figsize=(16, 5), dpi=300, sharey=True)
+
+  sub_panels = [
+    (axes[0], results.results_4k, "4 kHz Tone Burst"),
+    (axes[1], results.results_8k, "8 kHz Tone Burst"),
+    (axes[2], results.results_avg, "4/8 kHz Composite Average"),
+  ]
+
+  for ax, cohort_dict, subtitle in sub_panels:
+    for name, values in cohort_dict.items():
+      style = COHORT_STYLES.get(
+        name,
+        {"color": "#555555", "marker": ".", "linestyle": "-", "label": name},
+      )
+      ax.plot(
+        results.levels_db,
+        values,
+        label=style["label"],
+        color=style["color"],
+        marker=style["marker"],
+        linestyle=style["linestyle"],
+        linewidth=2.0,
+        markersize=6.5,
+      )
+    ax.set_xlabel("Sound Level (dB SPL)", fontsize=11, fontweight="bold")
+    ax.set_title(subtitle, fontsize=12, fontweight="bold")
+    ax.grid(True, linestyle="--", alpha=0.5)
+
+  axes[0].set_ylabel(
+    f"ABR Wave-I Onset Amplitude ({electrophysiology.RESPONSE_UNIT})",
+    fontsize=11,
+    fontweight="bold",
+  )
+  axes[0].legend(frameon=True, fontsize=8.5, loc="upper left")
+
+  fig.suptitle(
+    "ABR Wave-I Input-Output Growth Functions (Tone Bursts: 4 kHz, 8 kHz & Average)",
+    fontsize=13,
+    fontweight="bold",
+    y=0.98,
+  )
+  fig.tight_layout()
+  fig.savefig(path, dpi=300)
+  plt.close(fig)
+
+  return path
 
 
 def plot_efr_growth(
@@ -850,6 +1286,145 @@ def format_empirical_comparison_table(comparison: EmpiricalComparison) -> str:
   return "\n".join(lines)
 
 
+class ToneBurstEmpiricalComparison(NamedTuple):
+  """Comparison of simulated tone-burst Wave-I post/pre ratio against animal data."""
+
+  frequency_hz: float | None  # None denotes composite 4/8 kHz average
+  condition: str
+  simulated_w1_ratio: float | None
+  animal_w1_ratio: float
+  w1_ratio_matched: bool | None
+
+
+def compare_tone_burst_to_empirical(
+  tone_burst_results: ToneBurstCohortResults,
+  dataset: empirical.ChinchillaAbrDataset | None = None,
+  condition: str = EXPOSED_CONDITION,
+  baseline: str = BASELINE_CONDITION,
+  level_db: float = CALIBRATION_LEVEL_DB,
+  tolerance: float = W1_RATIO_TOLERANCE,
+) -> list[ToneBurstEmpiricalComparison]:
+  """Compares simulated tone-burst Wave-I amplitude ratios against animal data.
+
+  Evaluates high-level (80 dB SPL) post/pre ratios for individual frequencies
+  (e.g., 4 kHz and 8 kHz) and the composite 4/8 kHz average against the
+  noise-exposure measurements of Bharadwaj et al. (2022).
+
+  Args:
+    tone_burst_results: ToneBurstCohortResults from simulate_tone_burst_cohort.
+    dataset: Empirical dataset; loaded from package data when None.
+    condition: Cohort standing in for the noise-exposed animals.
+    baseline: Cohort treated as healthy pre-exposure baseline.
+    level_db: Calibration sound level in dB SPL (default 80.0).
+    tolerance: Maximum allowed absolute difference between model and animal.
+
+  Returns:
+    List of ToneBurstEmpiricalComparison records.
+  """
+  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+  comparisons: list[ToneBurstEmpiricalComparison] = []
+
+  if level_db not in tone_burst_results.levels_db:
+    return comparisons
+  target_idx = tone_burst_results.levels_db.index(level_db)
+
+  # Check individual frequencies (e.g. 4 kHz and 8 kHz).
+  for freq in tone_burst_results.frequencies_hz:
+    freq_results = tone_burst_results.results_by_frequency.get(freq, {})
+    if baseline in freq_results and condition in freq_results:
+      ctrl_amp = freq_results[baseline][target_idx]
+      exp_amp = freq_results[condition][target_idx]
+      sim_ratio = exp_amp / ctrl_amp if ctrl_amp > 0 else None
+      if freq in data.high_level_w1_uv:
+        animal_ratio = data.high_level_w1_uv[freq].ratio
+        matched = (
+          abs(sim_ratio - animal_ratio) <= tolerance
+          if sim_ratio is not None
+          else None
+        )
+        comparisons.append(
+          ToneBurstEmpiricalComparison(
+            frequency_hz=freq,
+            condition=condition,
+            simulated_w1_ratio=sim_ratio,
+            animal_w1_ratio=animal_ratio,
+            w1_ratio_matched=matched,
+          )
+        )
+
+  # Check composite average.
+  composite = tone_burst_results.composite_results
+  if baseline in composite and condition in composite:
+    ctrl_amp = composite[baseline][target_idx]
+    exp_amp = composite[condition][target_idx]
+    sim_ratio = exp_amp / ctrl_amp if ctrl_amp > 0 else None
+    animal_ratio = data.suprathreshold_w1_ratio
+    matched = (
+      abs(sim_ratio - animal_ratio) <= tolerance
+      if sim_ratio is not None
+      else None
+    )
+    comparisons.append(
+      ToneBurstEmpiricalComparison(
+        frequency_hz=None,
+        condition=condition,
+        simulated_w1_ratio=sim_ratio,
+        animal_w1_ratio=animal_ratio,
+        w1_ratio_matched=matched,
+      )
+    )
+
+  return comparisons
+
+
+def format_tone_burst_comparison_table(
+  comparisons: Sequence[ToneBurstEmpiricalComparison],
+) -> str:
+  """Renders tone-burst simulated versus animal comparisons as a Markdown table.
+
+  Args:
+    comparisons: Sequence of ToneBurstEmpiricalComparison records.
+
+  Returns:
+    Formatted Markdown table string.
+  """
+  def format_value(value: float | None, spec: str) -> str:
+    return "n/a" if value is None else format(value, spec)
+
+  rows: list[tuple[str, str, str, str, str]] = []
+  for comp in comparisons:
+    if comp.frequency_hz is None:
+      metric_label = f"Tone-Burst 4/8 kHz average Wave-I ratio ({CALIBRATION_LEVEL_DB:g} dB SPL)"
+    else:
+      metric_label = f"Tone-Burst {comp.frequency_hz:g} Hz Wave-I ratio ({CALIBRATION_LEVEL_DB:g} dB SPL)"
+
+    rows.append(
+      (
+        metric_label,
+        format_value(comp.simulated_w1_ratio, ".3f"),
+        format(comp.animal_w1_ratio, ".3f"),
+        f"+/-{W1_RATIO_TOLERANCE:g}",
+        format_check_status(comp.w1_ratio_matched),
+      )
+    )
+
+  cond_name = comparisons[0].condition if comparisons else "Exposed"
+  headers = (
+    "Metric",
+    f"Simulated ({cond_name})",
+    "Animal (Bharadwaj et al. 2022)",
+    "Tolerance",
+    "Status",
+  )
+  lines = [
+    "| " + " | ".join(headers) + " |",
+    "| " + " | ".join(["---"] * len(headers)) + " |",
+    *("| " + " | ".join(row) + " |" for row in rows),
+  ]
+  return "\n".join(lines)
+
+
+
 def _plot_metric_bars(
   axis: Any,
   simulated: float | None,
@@ -1062,6 +1637,8 @@ def validate_biological_signatures(
 def format_calibration_line(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
+  frequency_hz: float | None = empirical.CLICK_FREQUENCY_HZ,
+  stimulus_name: str | None = None,
 ) -> str:
   """Renders the fitted microvolt scale, or a note when it cannot be fitted.
 
@@ -1069,13 +1646,26 @@ def format_calibration_line(
   verbatim.
   """
   try:
-    scale = fit_response_scale_uv_per_au(click_levels_db, abr_results)
+    scale = fit_response_scale_uv_per_au(
+      click_levels_db, abr_results, frequency_hz=frequency_hz
+    )
   except (ValueError, KeyError, FileNotFoundError) as error:
     return f"Scale factor unavailable: {error}"
+
+  if frequency_hz == empirical.CLICK_FREQUENCY_HZ:
+    stim_desc = "click Wave-I amplitude"
+  elif frequency_hz is not None:
+    stim_desc = f"{frequency_hz:g} Hz tone-burst Wave-I amplitude"
+  else:
+    stim_desc = "4/8 kHz average tone-burst Wave-I amplitude"
+
+  if stimulus_name:
+    stim_desc = f"{stimulus_name} ({stim_desc})"
+
   return (
     f"Fitted scale factor: {scale:.4g} uV/{electrophysiology.RESPONSE_UNIT}, matching the "
     f"{BASELINE_CONDITION} response at {CALIBRATION_LEVEL_DB:g} dB SPL to the pre-exposure "
-    "chinchilla click Wave-I amplitude (Bharadwaj et al. 2022)."
+    f"chinchilla {stim_desc} (Bharadwaj et al. 2022)."
   )
 
 
