@@ -47,7 +47,12 @@ from carfac_ephys.experiment import (
   simulate_efr_level_series,
   validate_biological_signatures,
 )
-from carfac_ephys.stimuli import generate_click, generate_sam_tone
+from carfac_ephys.stimuli import (
+  generate_click,
+  generate_sam_tone,
+  generate_tone_burst,
+  generate_tone_burst_train,
+)
 
 __version__ = "0.1.0"
 
@@ -85,6 +90,8 @@ __all__ = [
   "generate_click",
   "generate_sam_tone",
   "generate_simulation_report",
+  "generate_tone_burst",
+  "generate_tone_burst_train",
   "get_default_cohort",
   "load_chinchilla_abr_dataset",
   "plot_empirical_comparison",
@@ -92,3 +99,4 @@ __all__ = [
   "simulate_efr_level_series",
   "validate_biological_signatures",
 ]
+

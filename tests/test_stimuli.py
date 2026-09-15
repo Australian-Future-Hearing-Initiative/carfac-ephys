@@ -9,7 +9,14 @@ from carfac_ephys.constants import (
   amplitude_to_db_spl,
   db_spl_to_amplitude,
 )
-from carfac_ephys.stimuli import generate_click, generate_sam_tone
+from carfac_ephys.stimuli import (
+  _compute_linear_ramp,
+  generate_click,
+  generate_sam_tone,
+  generate_tone_burst,
+  generate_tone_burst_train,
+)
+
 
 
 class TestConstants:
@@ -267,6 +274,164 @@ class TestGenerateSamTone:
       assert sam.shape == (int(round(0.05 * fs)),)
 
 
+class TestComputeLinearRamp:
+  """Tests for symmetric linear onset and offset envelope calculation."""
+
+  def test_basic_ramp_shape(self):
+    n_samples = 100
+    n_ramp = 10
+    ramp = _compute_linear_ramp(n_samples, n_ramp)
+
+    assert ramp.shape == (100,)
+    assert np.isclose(ramp[0], 0.0)
+    assert np.isclose(ramp[n_ramp - 1], 1.0)
+    assert np.all(ramp[n_ramp:-n_ramp] == 1.0)
+    assert np.isclose(ramp[-1], 0.0)
+    # Check linear slope.
+    assert np.allclose(np.diff(ramp[:n_ramp]), 1.0 / (n_ramp - 1))
+
+  def test_zero_ramp(self):
+    ramp = _compute_linear_ramp(50, 0)
+    assert np.all(ramp == 1.0)
+
+  def test_ramp_exceeding_half_buffer(self):
+    ramp = _compute_linear_ramp(20, 15)
+    # Capped at 20 // 2 = 10.
+    assert np.isclose(ramp[0], 0.0)
+    assert np.isclose(ramp[9], 1.0)
+    assert np.isclose(ramp[10], 1.0)
+    assert np.isclose(ramp[-1], 0.0)
+
+
+class TestGenerateToneBurst:
+  """Tests for calibrated tone burst stimulus generation."""
+
+  def test_default_properties(self):
+    burst = generate_tone_burst()
+    # Default: 5 ms duration at 32000 Hz = 160 samples.
+    assert burst.shape == (160,)
+    assert burst.dtype == np.float64
+
+
+  def test_peak_amplitude_calibration(self):
+    # Test peak amplitude calibration across levels 60, 70, 80 dB SPL and 104 dB SPL.
+    for level in [60.0, 70.0, 80.0, 104.0]:
+      for freq in [4000.0, 8000.0]:
+        burst = generate_tone_burst(frequency_hz=freq, peak_db_spl=level)
+        expected_peak = db_spl_to_amplitude(level)
+        # Because 4 kHz and 8 kHz have exact integer samples per cycle (8 and 4 samples at 32 kHz),
+        # the unramped plateau hits peak 1.0 exactly.
+        assert np.isclose(np.max(np.abs(burst)), expected_peak, rtol=1e-5)
+
+  def test_linear_envelope(self):
+    # Verify linear ramp boundaries.
+    fs = 32000
+    ramp_s = 0.0005
+    burst = generate_tone_burst(
+      frequency_hz=4000.0,
+      duration_s=0.005,
+      sample_rate=fs,
+      ramp_s=ramp_s,
+    )
+    # The first sample is sin(0) * ramp(0) = 0.0.
+    assert np.isclose(burst[0], 0.0)
+
+  def test_polarity_inversion(self):
+    pos = generate_tone_burst(polarity=1)
+    neg = generate_tone_burst(polarity=-1)
+    assert np.allclose(pos, -neg)
+
+  def test_onset_delay(self):
+    fs = 32000
+    delay_s = 0.002
+    burst = generate_tone_burst(delay_s=delay_s, sample_rate=fs)
+    delay_samples = int(round(delay_s * fs))
+    # Pre-burst samples should be zero.
+    assert np.all(burst[:delay_samples] == 0.0)
+    assert len(burst) == delay_samples + int(round(0.005 * fs))
+
+  def test_invalid_parameters(self):
+    with pytest.raises(ValueError):
+      generate_tone_burst(duration_s=0.0)
+    with pytest.raises(ValueError):
+      generate_tone_burst(duration_s=-0.001)
+    with pytest.raises(ValueError):
+      generate_tone_burst(sample_rate=0)
+    with pytest.raises(ValueError):
+      generate_tone_burst(frequency_hz=0.0)
+    with pytest.raises(ValueError):
+      generate_tone_burst(frequency_hz=16000.0, sample_rate=32000)
+    with pytest.raises(ValueError):
+      generate_tone_burst(ramp_s=-0.0001)
+    with pytest.raises(ValueError):
+      generate_tone_burst(duration_s=0.002, ramp_s=0.0015)
+    with pytest.raises(ValueError):
+      generate_tone_burst(delay_s=-0.001)
+    with pytest.raises(ValueError):
+      generate_tone_burst(polarity=0)
+    with pytest.raises(ValueError):
+      generate_tone_burst(polarity=2)
+
+
+class TestGenerateToneBurstTrain:
+  """Tests for continuous tone burst train generation."""
+
+  def test_default_train_properties(self):
+    # By default: 500 repetitions at 20 Hz at 32000 Hz.
+    # Period = 0.05 s = 1600 samples per repetition.
+    # Total samples = 500 * 1600 = 800,000 samples (25 seconds).
+    train = generate_tone_burst_train()
+    assert train.shape == (800000,)
+    assert train.dtype == np.float64
+
+  def test_alternating_polarity(self):
+    fs = 32000
+    rate = 20.0
+    n_reps = 4
+    train = generate_tone_burst_train(
+      sample_rate=fs,
+      rate_hz=rate,
+      n_repetitions=n_reps,
+      alternating_polarity=True,
+    )
+    period_samples = int(round(fs / rate))
+    rep0 = train[0:period_samples]
+    rep1 = train[period_samples : 2 * period_samples]
+    rep2 = train[2 * period_samples : 3 * period_samples]
+    rep3 = train[3 * period_samples : 4 * period_samples]
+
+    assert np.allclose(rep0, -rep1)
+    assert np.allclose(rep0, rep2)
+    assert np.allclose(rep1, rep3)
+
+  def test_non_alternating_polarity(self):
+    fs = 32000
+    rate = 20.0
+    n_reps = 3
+    train = generate_tone_burst_train(
+      sample_rate=fs,
+      rate_hz=rate,
+      n_repetitions=n_reps,
+      alternating_polarity=False,
+    )
+    period_samples = int(round(fs / rate))
+    rep0 = train[0:period_samples]
+    rep1 = train[period_samples : 2 * period_samples]
+    assert np.allclose(rep0, rep1)
+
+  def test_invalid_parameters(self):
+    with pytest.raises(ValueError):
+      generate_tone_burst_train(rate_hz=0.0)
+    with pytest.raises(ValueError):
+      generate_tone_burst_train(rate_hz=-10.0)
+    with pytest.raises(ValueError):
+      generate_tone_burst_train(n_repetitions=0)
+    with pytest.raises(ValueError):
+      generate_tone_burst_train(n_repetitions=-5)
+    with pytest.raises(ValueError):
+      generate_tone_burst_train(rate_hz=100.0, duration_s=0.008, delay_s=0.005)
+
+
 class TestEdgeCasesAndExports:
   """Tests for boundary conditions, non-positive amplitudes, and package exports."""
 
@@ -296,5 +461,9 @@ class TestEdgeCasesAndExports:
     assert hasattr(carfac_ephys, "DYNAMIC_RANGE_DB")
     assert hasattr(carfac_ephys, "generate_click")
     assert hasattr(carfac_ephys, "generate_sam_tone")
+    assert hasattr(carfac_ephys, "generate_tone_burst")
+    assert hasattr(carfac_ephys, "generate_tone_burst_train")
     assert hasattr(carfac_ephys, "db_spl_to_amplitude")
     assert hasattr(carfac_ephys, "amplitude_to_db_spl")
+
+
