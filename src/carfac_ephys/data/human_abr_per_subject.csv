@@ -1,0 +1,7 @@
+ID,TimePoint,W1,age,sex
+S01,pre,0.34,28,F
+S02,pre,0.36,31,M
+S03,pre,0.31,25,F
+S01,2wk,0.25,28,F
+S02,2wk,0.27,31,M
+S03,2wk,0.23,25,F
