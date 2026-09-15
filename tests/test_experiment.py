@@ -10,12 +10,15 @@ from carfac_ephys.carfac_model import FiberRetention
 from carfac_ephys.cli import main
 from carfac_ephys.empirical import CLICK_FREQUENCY_HZ, load_chinchilla_abr_dataset
 from carfac_ephys.experiment import (
+  CALIBRATION_REFERENCES,
+  CALIBRATION_STRATEGIES,
   DEFAULT_COHORT_CONDITIONS,
   DEFAULT_TONE_BURST_FREQUENCIES_HZ,
   DEFAULT_TONE_BURST_LEVELS_DB,
   THRESHOLD_SHIFT_TOLERANCE_DB,
   W1_RATIO_TOLERANCE,
   BiologicalValidation,
+  CalibrationConfig,
   Cohort,
   CohortCondition,
   ToneBurstCohortResults,
@@ -24,7 +27,9 @@ from carfac_ephys.experiment import (
   compare_tone_burst_to_empirical,
   estimate_threshold_db,
   fit_response_scale_uv_per_au,
+  format_8k_title,
   format_ascii_table,
+  format_calibration_line,
   format_empirical_comparison_table,
   format_markdown_table,
   format_tone_burst_comparison_table,
@@ -36,6 +41,7 @@ from carfac_ephys.experiment import (
   plot_tone_burst_growth,
   plot_tone_burst_individual_growth,
   plot_tone_burst_waveforms,
+  resolve_scale_factor,
   simulate_abr_level_series,
   simulate_efr_level_series,
   simulate_tone_burst_abr_series,
@@ -870,4 +876,164 @@ class TestToneBurstSimulationAndEmpirical:
     assert "8000 Hz" in table
     assert "4/8 kHz average" in table
     assert "PASSED" in table
+
+
+class TestFormat8kTitle:
+  """Tests for format_8k_title helper."""
+
+  def test_format_8k_title_defaults(self):
+    assert format_8k_title() == "8 kHz Tone Burst (high_f=0)"
+    assert format_8k_title("8 kHz Tone Burst (5 ms)", 0.5) == "8 kHz Tone Burst (5 ms) (high_f=0.5)"
+    assert format_8k_title("Title", 1.25) == "Title (high_f=1.25)"
+
+
+class TestCalibrationStrategies:
+  """Tests for individual, mode-dependent, and unified calibration resolution."""
+
+  @pytest.fixture
+  def mock_results(self):
+    dataset = load_chinchilla_abr_dataset()
+    levels_db = (60.0, 80.0)
+    click_results = {"Control": [10.0, 60.0]}  # 60.0 AU at 80 dB SPL
+    tb_results = ToneBurstCohortResults(
+      results_by_frequency={
+        4000.0: {"Control": [15.0, 90.0]},  # 90.0 AU at 80 dB SPL
+        8000.0: {"Control": [8.0, 40.0]},   # 40.0 AU at 80 dB SPL
+      },
+      composite_results={"Control": [11.5, 65.0]},  # 65.0 AU at 80 dB SPL
+      levels_db=levels_db,
+      frequencies_hz=(4000.0, 8000.0),
+      high_f_factor=0.25,
+    )
+    return dataset, click_results, tb_results, levels_db
+
+  def test_individual_strategy(self, mock_results):
+    dataset, click_res, tb_res, levels_db = mock_results
+
+    # Click uses click 80 dB value
+    s_click = resolve_scale_factor(
+      "individual", "click", click_results=click_res, tone_burst_results=tb_res, click_levels_db=levels_db
+    )
+    expected_click = dataset.high_level_w1_uv[CLICK_FREQUENCY_HZ].mean_pre / 60.0
+    assert s_click == pytest.approx(expected_click)
+
+    # 4k uses 4k 80 dB value
+    s_4k = resolve_scale_factor(
+      "individual", "4k", click_results=click_res, tone_burst_results=tb_res, click_levels_db=levels_db
+    )
+    expected_4k = dataset.high_level_w1_uv[4000.0].mean_pre / 90.0
+    assert s_4k == pytest.approx(expected_4k)
+
+    # 8k uses 8k 80 dB value
+    s_8k = resolve_scale_factor(
+      "individual", 8000.0, click_results=click_res, tone_burst_results=tb_res, click_levels_db=levels_db
+    )
+    expected_8k = dataset.high_level_w1_uv[8000.0].mean_pre / 40.0
+    assert s_8k == pytest.approx(expected_8k)
+
+    # average uses average 80 dB value
+    s_avg = resolve_scale_factor(
+      "individual", "average", click_results=click_res, tone_burst_results=tb_res, click_levels_db=levels_db
+    )
+    expected_avg = dataset.tone_average_w1_uv.mean_pre / 65.0
+    assert s_avg == pytest.approx(expected_avg)
+
+  def test_mode_dependent_strategy(self, mock_results):
+    dataset, click_res, tb_res, levels_db = mock_results
+
+    # Click always uses click
+    s_click = resolve_scale_factor(
+      "mode-dependent", "click", click_results=click_res, tone_burst_results=tb_res, reference="average", click_levels_db=levels_db
+    )
+    expected_click = dataset.high_level_w1_uv[CLICK_FREQUENCY_HZ].mean_pre / 60.0
+    assert s_click == pytest.approx(expected_click)
+
+    # Tone bursts share the reference factor (default: average)
+    s_4k = resolve_scale_factor(
+      "mode-dependent", "4k", click_results=click_res, tone_burst_results=tb_res, reference="average", click_levels_db=levels_db
+    )
+    s_8k = resolve_scale_factor(
+      "mode-dependent", "8k", click_results=click_res, tone_burst_results=tb_res, reference="average", click_levels_db=levels_db
+    )
+    expected_avg = dataset.tone_average_w1_uv.mean_pre / 65.0
+    assert s_4k == pytest.approx(expected_avg)
+    assert s_8k == pytest.approx(expected_avg)
+
+    # If reference is 4k, all tone bursts share 4k
+    s_8k_ref4k = resolve_scale_factor(
+      "mode-dependent", "8k", click_results=click_res, tone_burst_results=tb_res, reference="4k", click_levels_db=levels_db
+    )
+    expected_4k = dataset.high_level_w1_uv[4000.0].mean_pre / 90.0
+    assert s_8k_ref4k == pytest.approx(expected_4k)
+
+  def test_unified_strategy(self, mock_results):
+    dataset, click_res, tb_res, levels_db = mock_results
+
+    # If reference is click, everything shares click factor
+    expected_click = dataset.high_level_w1_uv[CLICK_FREQUENCY_HZ].mean_pre / 60.0
+    for stim in ("click", "4k", "8k", "average"):
+      s = resolve_scale_factor(
+        "unified", stim, click_results=click_res, tone_burst_results=tb_res, reference="click", click_levels_db=levels_db
+      )
+      assert s == pytest.approx(expected_click)
+
+    # If reference is average, everything shares average factor
+    expected_avg = dataset.tone_average_w1_uv.mean_pre / 65.0
+    for stim in ("click", "4k", "8k", "average"):
+      s = resolve_scale_factor(
+        "unified", stim, click_results=click_res, tone_burst_results=tb_res, reference="average", click_levels_db=levels_db
+      )
+      assert s == pytest.approx(expected_avg)
+
+  def test_validation_errors(self, mock_results):
+    _, click_res, tb_res, _ = mock_results
+    with pytest.raises(ValueError, match="Unknown calibration strategy"):
+      resolve_scale_factor("invalid-strat", "click")
+
+    with pytest.raises(ValueError, match="Unknown calibration reference"):
+      resolve_scale_factor("unified", "click", reference="invalid-ref")
+
+    with pytest.raises(ValueError, match="Unrecognized stimulus_type"):
+      resolve_scale_factor("individual", "unknown_stim")
+
+    with pytest.raises(ValueError, match="click_results required"):
+      resolve_scale_factor("individual", "click", click_results=None)
+
+    with pytest.raises(ValueError, match="tone_burst_results required"):
+      resolve_scale_factor("individual", "4k", tone_burst_results=None)
+
+  def test_format_calibration_line_with_strategy_and_scale(self):
+    line = format_calibration_line(
+      [60.0, 80.0],
+      {"Control": [10.0, 60.0]},
+      frequency_hz=4000.0,
+      scale_uv_per_au=0.015,
+      strategy="unified",
+    )
+    assert "0.015 uV/AU [strategy: unified]" in line
+    assert "4000 Hz tone-burst Wave-I amplitude" in line
+
+
+class TestCliCalibrationAndHighF:
+  """CLI integration tests verifying calibration flags and high_f_factor."""
+
+  def test_cli_flags_execution(self, tmp_path: pathlib.Path):
+    runner = CliRunner()
+    result = runner.invoke(
+      main,
+      [
+        "--output-dir", str(tmp_path),
+        "--quick",
+        "--no-plot",
+        "--stimulus", "all",
+        "--calibration-strategy", "mode-dependent",
+        "--calibration-reference", "average",
+        "--high-f-factor", "0.25",
+      ],
+    )
+    assert result.exit_code == 0
+    assert "[strategy: mode-dependent]" in result.output
+    assert "8 kHz Tone Burst (high_f=0.25)" in result.output
+    assert "ABR Wave-I Onset Amplitude (AU) vs Sound Level (8 kHz Tone Burst (high_f=0.25))" in result.output
+
 

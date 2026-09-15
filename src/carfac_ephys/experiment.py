@@ -772,7 +772,12 @@ def resolve_scale_factor(
   if effective_ref == "click":
     if click_results is None:
       raise ValueError("click_results required to fit click scale factor.")
-    levels = click_levels_db if click_levels_db is not None else DEFAULT_CLICK_LEVELS_DB
+    if click_levels_db is not None:
+      levels = click_levels_db
+    elif tone_burst_results is not None and len(click_results.get(condition, [])) == len(tone_burst_results.levels_db):
+      levels = tone_burst_results.levels_db
+    else:
+      levels = DEFAULT_CLICK_LEVELS_DB
     return fit_response_scale_uv_per_au(
       levels_db=levels,
       abr_results=click_results,
