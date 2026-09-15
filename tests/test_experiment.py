@@ -11,26 +11,38 @@ from carfac_ephys.cli import main
 from carfac_ephys.empirical import CLICK_FREQUENCY_HZ, load_chinchilla_abr_dataset
 from carfac_ephys.experiment import (
   DEFAULT_COHORT_CONDITIONS,
+  DEFAULT_TONE_BURST_FREQUENCIES_HZ,
+  DEFAULT_TONE_BURST_LEVELS_DB,
   THRESHOLD_SHIFT_TOLERANCE_DB,
   W1_RATIO_TOLERANCE,
   BiologicalValidation,
   Cohort,
   CohortCondition,
+  ToneBurstCohortResults,
+  ToneBurstEmpiricalComparison,
   compare_to_empirical,
+  compare_tone_burst_to_empirical,
   estimate_threshold_db,
   fit_response_scale_uv_per_au,
   format_ascii_table,
   format_empirical_comparison_table,
   format_markdown_table,
+  format_tone_burst_comparison_table,
   generate_simulation_report,
   get_default_cohort,
   plot_abr_growth,
   plot_efr_growth,
   plot_empirical_comparison,
+  plot_tone_burst_growth,
+  plot_tone_burst_waveforms,
   simulate_abr_level_series,
   simulate_efr_level_series,
+  simulate_tone_burst_abr_series,
+  simulate_tone_burst_cohort,
+  simulate_tone_burst_waveforms,
   validate_biological_signatures,
 )
+
 
 
 class TestCohortDefinitions:
@@ -234,6 +246,7 @@ class TestPlottingFunctions:
     }
     fig_path = tmp_path / "abr_wave_i_growth.png"
     out_path = plot_abr_growth(levels, results, fig_path)
+    out_path = plot_abr_growth(levels, results, fig_path, stimulus_label="Broadband Click")
 
     assert out_path.exists()
     assert out_path.stat().st_size > 0
@@ -246,6 +259,46 @@ class TestPlottingFunctions:
     }
     fig_path = tmp_path / "efr_growth.png"
     out_path = plot_efr_growth(levels, results, fig_path)
+
+    assert out_path.exists()
+    assert out_path.stat().st_size > 0
+
+  def test_plot_tone_burst_waveforms(self, tmp_path: pathlib.Path):
+    import numpy as np
+
+    t = np.linspace(0.0, 0.02, 200, dtype=np.float32)
+    waveforms_4k = (
+      t,
+      {
+        "Control": np.sin(2 * np.pi * 4000 * t) * np.exp(-t / 0.005),
+        "Synaptopathy-50": 0.5 * np.sin(2 * np.pi * 4000 * t) * np.exp(-t / 0.005),
+      },
+    )
+    waveforms_8k = (
+      t,
+      {
+        "Control": np.sin(2 * np.pi * 8000 * t) * np.exp(-t / 0.005),
+        "Synaptopathy-50": 0.5 * np.sin(2 * np.pi * 8000 * t) * np.exp(-t / 0.005),
+      },
+    )
+    fig_path = tmp_path / "tone_burst_waveforms.png"
+    out_path = plot_tone_burst_waveforms(waveforms_4k, waveforms_8k, fig_path, level_db=80.0)
+
+    assert out_path.exists()
+    assert out_path.stat().st_size > 0
+
+  def test_plot_tone_burst_growth(self, tmp_path: pathlib.Path):
+    results = ToneBurstCohortResults(
+      results_by_frequency={
+        4000.0: {"Control": [5.0, 15.0, 40.0], "Synaptopathy-50": [2.5, 7.5, 20.0]},
+        8000.0: {"Control": [4.0, 12.0, 32.0], "Synaptopathy-50": [2.0, 6.0, 16.0]},
+      },
+      composite_results={"Control": [4.5, 13.5, 36.0], "Synaptopathy-50": [2.25, 6.75, 18.0]},
+      levels_db=(60.0, 70.0, 80.0),
+      frequencies_hz=(4000.0, 8000.0),
+    )
+    fig_path = tmp_path / "tone_burst_growth.png"
+    out_path = plot_tone_burst_growth(results, fig_path)
 
     assert out_path.exists()
     assert out_path.stat().st_size > 0
@@ -303,12 +356,36 @@ class TestCli:
     assert (tmp_path / "efr_growth.png").stat().st_size > 0
     assert (tmp_path / "empirical_comparison.png").stat().st_size > 0
     assert (tmp_path / "simulation_report.md").stat().st_size > 0
+    assert (tmp_path / "tone_burst_waveforms.png").exists()
+    assert (tmp_path / "abr_wave_i_growth_tone_burst.png").exists()
+    assert (tmp_path / "tone_burst_waveforms.png").stat().st_size > 0
+    assert (tmp_path / "abr_wave_i_growth_tone_burst.png").stat().st_size > 0
 
     # The quick sweep omits the 30-50 dB SPL levels, so the threshold criteria
     # have no data and must not be reported as failures.
     report = (tmp_path / "simulation_report.md").read_text(encoding="utf-8")
     assert "OHC Loss Threshold Shift (30-50 dB SPL)**: SKIPPED" in report
     assert "FAILED" not in report
+
+  def test_cli_stimulus_tone_burst_only(self, tmp_path: pathlib.Path):
+    runner = CliRunner()
+    result = runner.invoke(
+      main,
+      [
+        "--stimulus",
+        "tone-burst",
+        "--quick",
+        "--plot",
+        "--output-dir",
+        str(tmp_path),
+      ],
+    )
+    assert result.exit_code == 0
+    assert "tone-burst level series simulation" in result.output
+    assert "Running ABR Wave-I click level series" not in result.output
+    assert (tmp_path / "tone_burst_waveforms.png").exists()
+    assert (tmp_path / "abr_wave_i_growth_tone_burst.png").exists()
+    assert not (tmp_path / "abr_wave_i_growth_click.png").exists()
 
 
 class TestMarkdownTableFormatter:
@@ -643,3 +720,125 @@ class TestCompareToEmpirical:
     assert path == out
     assert out.exists()
     assert out.stat().st_size > 1000
+
+
+class TestToneBurstSimulationAndEmpirical:
+  """Tests for tone-burst ABR simulation, calibration, and empirical comparison."""
+
+  def test_default_constants(self):
+    assert DEFAULT_TONE_BURST_FREQUENCIES_HZ == (4000.0, 8000.0)
+    assert DEFAULT_TONE_BURST_LEVELS_DB == (60.0, 70.0, 80.0)
+
+  def test_simulate_tone_burst_abr_series_mini_sweep(self):
+    cohort = {
+      "Control": CohortCondition(name="Control", ohc_health=1.0, fiber_retention=1.0),
+      "Synaptopathy-50": CohortCondition(
+        name="Synaptopathy-50", ohc_health=1.0, fiber_retention=0.5
+      ),
+    }
+    levels = [60.0, 80.0]
+    results = simulate_tone_burst_abr_series(
+      frequency_hz=4000.0,
+      cohort=cohort,
+      tone_burst_levels_db=levels,
+    )
+
+    assert "Control" in results
+    assert "Synaptopathy-50" in results
+    assert len(results["Control"]) == 2
+    # Monotonic growth.
+    assert results["Control"][1] > results["Control"][0]
+    assert results["Control"][0] > 0.0
+    # Synaptopathy attenuation.
+    assert results["Synaptopathy-50"][1] < results["Control"][1]
+
+  def test_simulate_tone_burst_cohort(self):
+    cohort = {
+      "Control": CohortCondition(name="Control", ohc_health=1.0, fiber_retention=1.0),
+    }
+    tb_results = simulate_tone_burst_cohort(
+      cohort=cohort,
+      frequencies_hz=[4000.0, 8000.0],
+      tone_burst_levels_db=[80.0],
+    )
+    assert isinstance(tb_results, ToneBurstCohortResults)
+    assert 4000.0 in tb_results.results_by_frequency
+    assert 8000.0 in tb_results.results_by_frequency
+    assert "Control" in tb_results.composite_results
+    ctrl_4k = tb_results.results_by_frequency[4000.0]["Control"][0]
+    ctrl_8k = tb_results.results_by_frequency[8000.0]["Control"][0]
+    expected_composite = 0.5 * (ctrl_4k + ctrl_8k)
+    assert tb_results.composite_results["Control"][0] == pytest.approx(expected_composite)
+
+  def test_simulate_tone_burst_waveforms(self):
+    cohort = {
+      "Control": CohortCondition(name="Control", ohc_health=1.0, fiber_retention=1.0),
+    }
+    time_ms, waveforms = simulate_tone_burst_waveforms(
+      frequency_hz=4000.0,
+      cohort=cohort,
+      level_db=80.0,
+      total_duration_s=0.015,
+      delay_s=0.005,
+    )
+    # 0.015 s * 32000 Hz = 480 samples.
+    assert len(time_ms) == 480
+    assert "Control" in waveforms
+    assert len(waveforms["Control"]) == 480
+    # Baseline before stimulus onset delay (5 ms = 160 samples) should be near zero.
+    import numpy as np
+
+    assert np.allclose(waveforms["Control"][:150], 0.0, atol=1e-5)
+    # Peak occurs after delay.
+    assert np.max(waveforms["Control"][160:]) > 0.0
+
+  def test_tone_burst_calibration_and_comparison(self):
+    dataset = load_chinchilla_abr_dataset()
+    # Mock TB cohort results at 80 dB SPL.
+    mock_tb_results = ToneBurstCohortResults(
+      results_by_frequency={
+        4000.0: {
+          "Control": [100.0],
+          "Selective-Synaptopathy": [62.6],
+        },
+        8000.0: {
+          "Control": [100.0],
+          "Selective-Synaptopathy": [83.1],
+        },
+      },
+      composite_results={
+        "Control": [100.0],
+        "Selective-Synaptopathy": [72.85],
+      },
+      levels_db=(80.0,),
+      frequencies_hz=(4000.0, 8000.0),
+    )
+    # Calibration against 4 kHz empirical baseline.
+    scale_4k = fit_response_scale_uv_per_au(
+      levels_db=[80.0],
+      abr_results={"Control": [100.0]},
+      frequency_hz=4000.0,
+      dataset=dataset,
+    )
+    assert scale_4k == pytest.approx(dataset.high_level_w1_uv[4000.0].mean_pre / 100.0)
+
+    # Calibration against 4/8 kHz composite average empirical baseline.
+    scale_comp = fit_response_scale_uv_per_au(
+      levels_db=[80.0],
+      abr_results={"Control": [100.0]},
+      frequency_hz=None,
+      dataset=dataset,
+    )
+    assert scale_comp == pytest.approx(dataset.tone_average_w1_uv.mean_pre / 100.0)
+
+    # Empirical comparison.
+    comps = compare_tone_burst_to_empirical(mock_tb_results, dataset=dataset)
+    assert len(comps) == 3
+    assert all(c.w1_ratio_matched is True for c in comps)
+
+    table = format_tone_burst_comparison_table(comps)
+    assert "4000 Hz" in table
+    assert "8000 Hz" in table
+    assert "4/8 kHz average" in table
+    assert "PASSED" in table
+
