@@ -34,6 +34,7 @@ from carfac_ephys.experiment import (
   plot_efr_growth,
   plot_empirical_comparison,
   plot_tone_burst_growth,
+  plot_tone_burst_individual_growth,
   plot_tone_burst_waveforms,
   simulate_abr_level_series,
   simulate_efr_level_series,
@@ -303,6 +304,25 @@ class TestPlottingFunctions:
     assert out_path.exists()
     assert out_path.stat().st_size > 0
 
+  def test_plot_tone_burst_individual_growth(self, tmp_path: pathlib.Path):
+    results = ToneBurstCohortResults(
+      results_by_frequency={
+        4000.0: {"Control": [5.0, 15.0, 40.0], "Synaptopathy-50": [2.5, 7.5, 20.0]},
+        8000.0: {"Control": [4.0, 12.0, 32.0], "Synaptopathy-50": [2.0, 6.0, 16.0]},
+      },
+      composite_results={"Control": [4.5, 13.5, 36.0], "Synaptopathy-50": [2.25, 6.75, 18.0]},
+      levels_db=(60.0, 70.0, 80.0),
+      frequencies_hz=(4000.0, 8000.0),
+    )
+    p4k, p8k, pavg = plot_tone_burst_individual_growth(results, tmp_path)
+
+    assert p4k.exists() and p4k.stat().st_size > 0
+    assert p8k.exists() and p8k.stat().st_size > 0
+    assert pavg.exists() and pavg.stat().st_size > 0
+    assert p4k.name == "abr_wave_i_growth_4k.png"
+    assert p8k.name == "abr_wave_i_growth_8k.png"
+    assert pavg.name == "abr_wave_i_growth_avg.png"
+
 
 class TestCli:
   """Tests for Click CLI runner."""
@@ -358,8 +378,14 @@ class TestCli:
     assert (tmp_path / "simulation_report.md").stat().st_size > 0
     assert (tmp_path / "tone_burst_waveforms.png").exists()
     assert (tmp_path / "abr_wave_i_growth_tone_burst.png").exists()
+    assert (tmp_path / "abr_wave_i_growth_4k.png").exists()
+    assert (tmp_path / "abr_wave_i_growth_8k.png").exists()
+    assert (tmp_path / "abr_wave_i_growth_avg.png").exists()
     assert (tmp_path / "tone_burst_waveforms.png").stat().st_size > 0
     assert (tmp_path / "abr_wave_i_growth_tone_burst.png").stat().st_size > 0
+    assert (tmp_path / "abr_wave_i_growth_4k.png").stat().st_size > 0
+    assert (tmp_path / "abr_wave_i_growth_8k.png").stat().st_size > 0
+    assert (tmp_path / "abr_wave_i_growth_avg.png").stat().st_size > 0
 
     # The quick sweep omits the 30-50 dB SPL levels, so the threshold criteria
     # have no data and must not be reported as failures.
@@ -385,6 +411,9 @@ class TestCli:
     assert "Running ABR Wave-I click level series" not in result.output
     assert (tmp_path / "tone_burst_waveforms.png").exists()
     assert (tmp_path / "abr_wave_i_growth_tone_burst.png").exists()
+    assert (tmp_path / "abr_wave_i_growth_4k.png").exists()
+    assert (tmp_path / "abr_wave_i_growth_8k.png").exists()
+    assert (tmp_path / "abr_wave_i_growth_avg.png").exists()
     assert not (tmp_path / "abr_wave_i_growth_click.png").exists()
 
 
@@ -727,7 +756,7 @@ class TestToneBurstSimulationAndEmpirical:
 
   def test_default_constants(self):
     assert DEFAULT_TONE_BURST_FREQUENCIES_HZ == (4000.0, 8000.0)
-    assert DEFAULT_TONE_BURST_LEVELS_DB == (60.0, 70.0, 80.0)
+    assert DEFAULT_TONE_BURST_LEVELS_DB == (30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
 
   def test_simulate_tone_burst_abr_series_mini_sweep(self):
     cohort = {
