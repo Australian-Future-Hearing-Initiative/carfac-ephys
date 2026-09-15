@@ -47,6 +47,11 @@ class TestBuildModelInit:
     assert np.allclose(model.n_fibers[:, 0], 500.0)
     assert np.allclose(model.n_fibers[:, 1], 350.0)
     assert np.allclose(model.n_fibers[:, 2], 250.0)
+    assert ear_params.car.high_f_factor == 0.0
+
+  def test_high_f_factor(self):
+    model = build_model(high_f_factor=0.2)
+    assert model.params.ears[0].car.high_f_factor == 0.2
 
   def test_custom_sampling_rate(self):
     fs = 16000

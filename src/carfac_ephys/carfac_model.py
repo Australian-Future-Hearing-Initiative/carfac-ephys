@@ -171,6 +171,7 @@ def build_model(
   ohc_health: float | Sequence[float] | np.ndarray = 1.0,
   fiber_retention: float | FiberRetention | Sequence[float] | np.ndarray = 1.0,
   fs: int = constants.DEFAULT_SAMPLE_RATE,
+  high_f_factor: float = 0.0,
 ) -> CarfacModel:
   """Builds and initializes a CarfacModel with specified biophysical health.
 
@@ -178,6 +179,7 @@ def build_model(
     ohc_health: Outer hair cell health in [0, 1], scalar or array matching channel count.
     fiber_retention: Auditory nerve fiber retention in [0, 1] across HSR, MSR, LSR.
     fs: Sampling rate in Hz.
+    high_f_factor: CARFAC factor adjusting high-frequency channel distribution and damping.
 
   Returns:
     Configured CarfacModel ready for simulation.
@@ -186,11 +188,12 @@ def build_model(
   if fs <= 0:
     raise ValueError(f"fs must be positive, got {fs}.")
 
-  # Initialize design parameters with two-capacitor IHC and delay buffer.
+  # Initialize design parameters with two-capacitor IHC, delay buffer, and high_f_factor.
   params = carfac.CarfacDesignParameters(fs=fs)
   for ear in params.ears:
     ear.ihc.ihc_style = "two_cap_with_syn"
     ear.car.use_delay_buffer = True
+    ear.car.high_f_factor = float(high_f_factor)
 
   # Design and initialize CARFAC structures.
   hypers, weights, state = carfac.design_and_init_carfac(params)
