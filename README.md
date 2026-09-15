@@ -146,8 +146,11 @@ Tone burst stimuli (5 ms duration, 0.5 ms linear rise/fall ramps, 20 Hz stimulat
 
 ![4 kHz Tone-Burst ABR Wave-I Growth](assets/abr_wave_i_growth_4k.png)
 
-#### 8 kHz Tone-Burst ABR Wave-I (30–80 dB SPL)
+#### 8 kHz Tone-Burst ABR Wave-I (30–80 dB SPL, high_f=0)
 `carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=8000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 8 kHz Wave-I amplitude ($1.0985$ µV), giving $\approx 0.0261$ µV/AU.
+
+> [!NOTE]
+> CARFAC's `high_f_factor` parameter (`default: 0.0`) adjusts the pole distribution and damping for channels near Nyquist ($>4$ kHz) relative to $f_s$, allowing fine-tuning of 8 kHz tone-burst sensitivity relative to 4 kHz. The title reflects the active factor (e.g. `8 kHz Tone Burst (high_f=0)`).
 
 | Condition | 30 dB SPL | 40 dB SPL | 50 dB SPL | 60 dB SPL | 70 dB SPL | 80 dB SPL |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -210,6 +213,27 @@ Carrier $f_c = 2000$ Hz, modulation frequency $f_m = 100$ Hz, $100\%$ modulation
 
 ---
 
+### 3.4 Calibration Strategies (AU to µV Scaling)
+
+`carfac-ephys` supports three distinct calibration strategies to convert arbitrary response units (AU) to physical microvolts (µV) matching empirical chinchilla recordings:
+
+1. **`individual` (Default)**:
+   Every stimulus mode and frequency is scaled to its **own** 80 dB pre-exposure amplitude from the empirical chinchilla dataset (Bharadwaj et al. 2022).
+   - Click scale factor: $\approx 0.0316$ µV/AU
+   - 4 kHz tone-burst scale factor: $\approx 0.0149$ µV/AU
+   - 8 kHz tone-burst scale factor: $\approx 0.0261$ µV/AU
+   - 4/8 kHz composite average scale factor: $\approx 0.0184$ µV/AU
+
+2. **`mode-dependent`**:
+   Broadband clicks use their dedicated click calibration factor ($\approx 0.0316$ µV/AU), while tone-bursts share a **single common scale factor** determined by `--calibration-reference` (default: `average`, or optionally `4k` or `8k`). This preserves relative frequency sensitivity between 4 kHz and 8 kHz tone bursts while accounting for spectral differences against broadband clicks.
+
+3. **`unified`**:
+   A **single universal scale factor** is applied across all stimuli (clicks and tone bursts alike), determined by `--calibration-reference` (default: `average`, or optionally `click`, `4k`, or `8k`).
+
+Threshold shift evaluation ($0.1$ µV criterion) scales directly with the chosen strategy, while suprathreshold post/pre ratios ($A_{\text{exposed}} / A_{\text{control}}$) are scale-invariant.
+
+---
+
 ## 4. Reproduction Steps
 
 ### Prerequisites
@@ -227,7 +251,7 @@ uv sync
 
 ### 2. Run Automated Test Suite
 
-Verify all 166 unit and integration tests:
+Verify all 174 unit and integration tests:
 ```bash
 uv run pytest -v
 ```
@@ -237,8 +261,17 @@ uv run pytest -v
 Execute simulations across cohorts using the CLI tool:
 
 ```bash
-# Run both click and tone-burst simulations (default)
+# Run both click and tone-burst simulations with individual calibration (default)
 uv run carfac-ephys-simulate --output-dir output/ --stimulus all
+
+# Run with mode-dependent calibration using composite average reference
+uv run carfac-ephys-simulate --output-dir output/ --calibration-strategy mode-dependent --calibration-reference average
+
+# Run with unified calibration using click reference
+uv run carfac-ephys-simulate --output-dir output/ --calibration-strategy unified --calibration-reference click
+
+# Run with custom high_f_factor adjusting CARFAC high-frequency tuning (>4 kHz)
+uv run carfac-ephys-simulate --output-dir output/ --high-f-factor 0.5
 
 # Run broadband click and EFR simulations only
 uv run carfac-ephys-simulate --output-dir output/ --stimulus click
@@ -299,23 +332,24 @@ carfac-ephys/
 ├── assets/                     # Published diagnostic figures
 │   ├── abr_wave_i_growth.png
 │   ├── abr_wave_i_growth_click.png
+│   ├── abr_wave_i_growth_4k.png
+│   ├── abr_wave_i_growth_8k.png
+│   ├── abr_wave_i_growth_avg.png
 │   ├── abr_wave_i_growth_tone_burst.png
+│   ├── tone_burst_waveforms.png
 │   ├── efr_growth.png
-│   └── empirical_comparison.png
 │   ├── empirical_comparison.png
-│   ├── simulation_report.md
-│   └── tone_burst_waveforms.png
+│   └── simulation_report.md
 ├── src/
 │   └── carfac_ephys/
 │       ├── __init__.py
 │       ├── constants.py        # Calibration constants (104 dB SPL = 0 dB FS)
-│       ├── stimuli.py          # Calibrated click and SAM tone generation
 │       ├── stimuli.py          # Calibrated click, SAM tone, and tone-burst generation
-│       ├── carfac_model.py     # Biophysical CARFAC wrapper (OHC & fiber retention)
+│       ├── carfac_model.py     # Biophysical CARFAC wrapper (OHC & fiber retention, high_f_factor)
 │       ├── electrophysiology.py # ABR Wave-I and EFR metric extractors
 │       ├── empirical.py        # Chinchilla ABR dataset loader (Bharadwaj et al. 2022)
 │       ├── data/               # Packaged empirical data files
-│       ├── experiment.py       # Cohort definitions, level sweeps, validation
+│       ├── experiment.py       # Cohort definitions, level sweeps, calibration strategies, validation
 │       └── cli.py              # CLI entry point (carfac-ephys-simulate)
 └── tests/
     ├── test_stimuli.py
