@@ -855,7 +855,7 @@ def plot_tone_burst_waveforms(
   path = pathlib.Path(output_path)
   path.parent.mkdir(parents=True, exist_ok=True)
 
-  fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5), dpi=300, sharey=True)
+  fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5), dpi=300, sharey=True)
 
   panels = [
     (ax1, waveforms_4k, "4 kHz Tone Burst (5 ms)"),
@@ -892,27 +892,33 @@ def plot_tone_burst_waveforms(
     fontweight="bold",
   )
 
-  # Place a single legend outside the axes grid stretched horizontally across the two subplots.
-  handles, labels = ax1.get_legend_handles_labels()
-  by_label = dict(zip(labels, handles))
-  fig.legend(
-    by_label.values(),
-    by_label.keys(),
-    loc="lower center",
-    bbox_to_anchor=(0.5, -0.02),
-    ncol=len(by_label),
-    frameon=True,
-    fontsize=9.0,
-  )
-
   fig.suptitle(
     f"Compound ABR Tone-Burst Response Waveforms ({level_db:g} dB SPL, Alternating Polarity)",
     fontsize=13,
     fontweight="bold",
     y=0.98,
   )
-  fig.tight_layout(rect=[0.0, 0.06, 1.0, 0.95])
-  fig.savefig(path, dpi=300, bbox_inches="tight")
+  fig.tight_layout(rect=[0.0, 0.14, 1.0, 0.94])
+
+  # Place a single legend outside the axes grid centered within the combined subplots width.
+  pos1 = ax1.get_position()
+  pos2 = ax2.get_position()
+  center_x = (pos1.x0 + pos2.x1) / 2.0
+
+  handles, labels = ax1.get_legend_handles_labels()
+  by_label = dict(zip(labels, handles))
+  fig.legend(
+    by_label.values(),
+    by_label.keys(),
+    loc="lower center",
+    bbox_to_anchor=(center_x, 0.01),
+    ncol=4,
+    frameon=True,
+    fontsize=8.5,
+    columnspacing=1.2,
+  )
+
+  fig.savefig(path, dpi=300)
   plt.close(fig)
 
   return path
