@@ -3,9 +3,9 @@
 [![CI Tests](https://github.com/Australian-Future-Hearing-Initiative/carfac-ephys/actions/workflows/test.yml/badge.svg)](https://github.com/Australian-Future-Hearing-Initiative/carfac-ephys)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-In silico reproduction of animal model cochlear impairment electrophysiology using the [CARFAC](https://github.com/google/carfac) (Cascade of Asymmetric Resonators with Fast-Acting Compression) auditory periphery model.
+In silico reproduction of cochlear impairment electrophysiology using the [CARFAC](https://github.com/google/carfac) (Cascade of Asymmetric Resonators with Fast-Acting Compression) auditory periphery model.
 
-This repository demonstrates that CARFAC accurately reproduces the signature electrophysiological dissociations observed in animal models (e.g., chinchilla and mouse studies; Bharadwaj et al. 2022, Mehraei et al. 2016, Ginsberg et al. 2023) across Auditory Brainstem Response (ABR) Wave-I / Compound Action Potential (CAP) and Envelope-Following Response (EFR) level series.
+This repository demonstrates that CARFAC accurately reproduces the signature electrophysiological dissociations observed in both animal models (e.g., chinchilla and mouse studies; Bharadwaj et al. 2022, Mehraei et al. 2016, Ginsberg et al. 2023) and human studies (e.g., Verhulst et al. 2015, Temboury-Gutierrez et al. 2024) across Auditory Brainstem Response (ABR) Wave-I, Compound Action Potential (CAP) and Envelope-Following Response (EFR) level series.
 
 ---
 
@@ -22,9 +22,14 @@ In animal hearing loss studies, controlled cochlear pathologies produce distinct
 
 ---
 
-## 2. How the Synthetic Model Replicates Animal Data
+## 2. How the Synthetic Model Replicates Empirical Data
 
-The core objective of `carfac-ephys` is reproducing the empirical electrophysiological findings of animal synaptopathy studies (specifically **Bharadwaj et al. 2022**, *Commun Biol*, investigating noise-exposed chinchillas) using the CARFAC biophysical cochlear model.
+The core objective of `carfac-ephys` is reproducing the empirical electrophysiological findings of synaptopathy studies using the CARFAC biophysical cochlear model. The pipeline supports two empirical reference datasets, selectable at runtime:
+
+| `--species` | Reference dataset | Citation |
+| :--- | :--- | :--- |
+| `chinchilla` *(default)* | Noise-exposed chinchilla ABR | Bharadwaj et al. (2022) |
+| `human` | Human listener ABR (normal-hearing, noise-exposed groups) | Verhulst et al. (2015); Temboury-Gutierrez et al. (2024) |
 
 ### 2.1 The Animal Experiment Being Replicated
 
@@ -115,7 +120,7 @@ Selective loss of the high-threshold fibers leaves the near-threshold response a
 
 ### Empirical Validation Against Chinchilla ABR Data
 
-The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_chinchilla_abr_dataset`), not from hand-picked bands.
+The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_abr_dataset("chinchilla")`), not from hand-picked bands. The same comparison runs against the packaged human dataset via `load_abr_dataset("human")` (or `--species human` on the CLI); both species share the same `AbrDataset` shape, so nothing else in the pipeline branches on which one is loaded.
 
 | Metric | Simulated (Selective-Synaptopathy) | Animal (Bharadwaj et al. 2022) | Tolerance | Status |
 | :--- | :---: | :---: | :---: | :---: |
@@ -165,17 +170,25 @@ uv run pytest -v
 
 ### 3. Run Cohort Simulation
 
-Execute the full level sweep across all five cohorts:
+Execute the full level sweep against the **chinchilla** dataset (default):
 ```bash
 uv run carfac-ephys-simulate --output-dir output/
 ```
 
+Or validate against the packaged **human** ABR dataset:
+
+```bash
+uv run carfac-ephys-simulate --species human --output-dir output/
+```
+
+`--species` accepts `chinchilla` (default) or `human`; both are registered in `empirical.SPECIES_DATA_FILES` and loaded through the same `load_abr_dataset(species)` function, so there is no species-specific class or code path to choose between.
+
 This will:
 1. Run click-evoked ABR simulations from 30 to 80 dB SPL.
 2. Run SAM-tone EFR simulations from 40 to 80 dB SPL.
-3. Validate all biological signatures, including the quantitative comparison against the chinchilla ABR data.
-4. Print summary tables to stdout.
-5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`, `empirical_comparison.png`) and `simulation_report.md` to `output/`.
+3. Validate all biological signatures, including the quantitative comparison against the selected `--species` ABR data.
+4. Print summary tables, labelled with the selected species, to stdout.
+5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`) and the species-labelled comparison outputs (`empirical_comparison_<species>.png`, `simulation_report_<species>.md`) to `output/`. Only the latter two depend on `--species`, so switching species between runs doesn't overwrite the growth-curve figures.
 
 #### Fast Smoke Test
 To verify the pipeline on a reduced 2-level subset:
@@ -202,7 +215,7 @@ carfac-ephys/
 │       ├── stimuli.py          # Calibrated click and SAM tone generation
 │       ├── carfac_model.py     # Biophysical CARFAC wrapper (OHC & fiber retention)
 │       ├── electrophysiology.py # ABR Wave-I and EFR metric extractors
-│       ├── empirical.py        # Chinchilla ABR dataset loader (Bharadwaj et al. 2022)
+│       ├── empirical.py        # Empirical ABR dataset loader (chinchilla & human, one AbrDataset shape)
 │       ├── data/               # Packaged empirical data files
 │       ├── experiment.py       # Cohort definitions, level sweeps, validation
 │       └── cli.py              # CLI entry point (carfac-ephys-simulate)

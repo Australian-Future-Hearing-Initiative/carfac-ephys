@@ -6,7 +6,9 @@ group ABR thresholds and high-level Wave-I / Wave-V amplitudes measured one week
 before and two weeks after exposure, plus per-animal amplitudes averaged over
 the 4 and 8 kHz tone bursts.
 
-Reference: Bharadwaj et al. (2022) Commun Biol, doi:10.1038/s42003-022-03691-4.
+References:
+  Bharadwaj et al. (2022) Commun Biol, doi:10.1038/s42003-022-03691-4 (chinchilla).
+  Verhulst et al. (2015); Temboury-Gutierrez et al. (2024) (human).
 """
 
 import csv
@@ -21,10 +23,6 @@ from collections.abc import Sequence
 # a regular (non-zipped) install, which is what pip and uv produce.
 DEFAULT_DATA_DIR: pathlib.Path = pathlib.Path(str(importlib.resources.files(__package__))) / "data"
 
-# File names of the empirical data files within the data directory.
-SUMMARY_FILE_NAME: str = "chinchilla_abr_summary.json"
-PER_ANIMAL_FILE_NAME: str = "chinABR_HighLevel_uV_4k_8k_ave.csv"
-
 # Frequency key used for the broadband click condition.
 CLICK_FREQUENCY_HZ: float = 0.0
 
@@ -32,6 +30,40 @@ CLICK_FREQUENCY_HZ: float = 0.0
 PRE_TIME_POINT: str = "pre"
 POST_TIME_POINT: str = "2wk"
 
+
+@dataclasses.dataclass(frozen=True)
+class SpeciesDataFiles:
+    """File layout for one species' empirical dataset.
+
+    Attributes:
+      summary_file_name: JSON file holding group threshold and wave amplitude statistics.
+      per_subject_file_name: CSV file holding per-subject pre/post wave amplitudes.
+      has_wave_v: Whether the summary file reports Wave-V amplitudes in addition to Wave-I.
+    """
+
+    summary_file_name: str
+    per_subject_file_name: str
+    has_wave_v: bool
+
+
+# Registry of supported species. Add an entry here (and the matching data
+# files under `data/`) to support comparison against another species — no
+# other code in this module, or in `experiment.py`, is species-specific.
+SPECIES_DATA_FILES: dict[str, SpeciesDataFiles] = {
+    "chinchilla": SpeciesDataFiles(
+        summary_file_name="chinchilla_abr_summary.json",
+        per_subject_file_name="chinABR_HighLevel_uV_4k_8k_ave.csv",
+        has_wave_v=True,
+    ),
+    "human": SpeciesDataFiles(
+        summary_file_name="human_abr_summary.json",
+        per_subject_file_name="human_abr_per_subject.csv",
+        has_wave_v=False,
+    ),
+}
+
+# Species used when none is specified at runtime.
+DEFAULT_SPECIES: str = "chinchilla"
 
 def _post_pre_ratio(post: float, pre: float, label: str) -> float:
   """Returns post over pre, rejecting a zero baseline.
@@ -90,69 +122,89 @@ class AnimalWaveAmplitudes:
     return _post_pre_ratio(self.post_w5_uv, self.pre_w5_uv, f"pre_w5_uv of {self.animal_id}")
 
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Generic protocol — any dataset (chinchilla, human, …) must satisfy this.
+# ──────────────────────────────────────────────────────────────────────────────
+
 @dataclasses.dataclass(frozen=True)
-class ChinchillaAbrDataset:
-  """Empirical chinchilla ABR dataset before and after noise exposure.
+class AbrDataset:
+    """Empirical ABR dataset before and after noise exposure, for one species.
 
-  Attributes:
-    source: Citation of the originating publication.
-    animals: Animal identifiers, in file order.
-    frequencies_hz: Stimulus frequencies; 0 Hz denotes the broadband click.
-    thresholds_db_spl: ABR threshold statistics keyed by frequency.
-    high_level_w1_uv: High-level Wave-I amplitude statistics keyed by frequency.
-    high_level_w5_uv: High-level Wave-V amplitude statistics keyed by frequency.
-    tone_average_w1_uv: Wave-I statistics averaged over the 4 and 8 kHz tones.
-    tone_average_w5_uv: Wave-V statistics averaged over the 4 and 8 kHz tones.
-    per_animal: Per-animal 4/8 kHz-averaged high-level wave amplitudes.
-  """
+    A single shape serves every registered species: chinchilla data additionally
+    reports Wave-V amplitudes, so `high_level_w5_uv` and `tone_average_w5_uv` are
+    `None` for species that don't measure it (see `has_wave_v`).
 
-  source: str
-  animals: tuple[str, ...]
-  frequencies_hz: tuple[float, ...]
-  thresholds_db_spl: dict[float, PrePostStat]
-  high_level_w1_uv: dict[float, PrePostStat]
-  high_level_w5_uv: dict[float, PrePostStat]
-  tone_average_w1_uv: PrePostStat
-  tone_average_w5_uv: PrePostStat
-  per_animal: tuple[AnimalWaveAmplitudes, ...]
-
-  def threshold_shift_db(self, frequency_hz: float = CLICK_FREQUENCY_HZ) -> float:
-    """Returns the post minus pre threshold shift in dB at a frequency.
-
-    Args:
-      frequency_hz: Stimulus frequency; 0 Hz denotes the broadband click.
-
-    Returns:
-      Threshold shift in dB.
+    Attributes:
+      species: Species key from `SPECIES_DATA_FILES` (e.g. "chinchilla", "human").
+      source: Citation of the originating publication.
+      subjects: Subject identifiers, in file order.
+      frequencies_hz: Stimulus frequencies; 0 Hz denotes the broadband click.
+      thresholds_db_spl: ABR threshold statistics keyed by frequency.
+      high_level_w1_uv: High-level Wave-I amplitude statistics keyed by frequency.
+      tone_average_w1_uv: Wave-I statistics averaged over the reference tones.
+      per_subject: Per-subject high-level wave amplitudes.
+      high_level_w5_uv: High-level Wave-V amplitude statistics keyed by frequency,
+        when the species reports Wave-V; `None` otherwise.
+      tone_average_w5_uv: Wave-V statistics averaged over the reference tones,
+        when available; `None` otherwise.
+      calibration_level_db: Suprathreshold reference level in dB SPL used for
+        the tone-average statistics.
     """
-    return _lookup_frequency(self.thresholds_db_spl, frequency_hz).shift
 
-  def wave_i_ratio(self, frequency_hz: float = CLICK_FREQUENCY_HZ) -> float:
-    """Returns the post over pre high-level Wave-I amplitude ratio.
+    species: str
+    source: str
+    subjects: tuple[str, ...]
+    frequencies_hz: tuple[float, ...]
+    thresholds_db_spl: dict[float, PrePostStat]
+    high_level_w1_uv: dict[float, PrePostStat]
+    tone_average_w1_uv: PrePostStat
+    per_subject: tuple[AnimalWaveAmplitudes, ...]
+    high_level_w5_uv: dict[float, PrePostStat] | None = None
+    tone_average_w5_uv: PrePostStat | None = None
+    calibration_level_db: float = 80.0
 
-    Args:
-      frequency_hz: Stimulus frequency; 0 Hz denotes the broadband click.
+    def threshold_shift_db(self, frequency_hz: float = CLICK_FREQUENCY_HZ) -> float:
+        """Returns the post minus pre threshold shift in dB at a frequency.
 
-    Returns:
-      Dimensionless amplitude ratio.
-    """
-    return _lookup_frequency(self.high_level_w1_uv, frequency_hz).ratio
+        Args:
+          frequency_hz: Stimulus frequency; 0 Hz denotes the broadband click.
 
-  @property
-  def click_threshold_shift_db(self) -> float:
-    """Post minus pre click ABR threshold shift in dB."""
-    return self.threshold_shift_db(CLICK_FREQUENCY_HZ)
+        Returns:
+          Threshold shift in dB.
+        """
+        return _lookup_frequency(self.thresholds_db_spl, frequency_hz).shift
 
-  @property
-  def suprathreshold_w1_ratio(self) -> float:
-    """Post over pre Wave-I ratio of the 4/8 kHz-averaged group means."""
-    return self.tone_average_w1_uv.ratio
+    def wave_i_ratio(self, frequency_hz: float = CLICK_FREQUENCY_HZ) -> float:
+        """Returns the post over pre high-level Wave-I amplitude ratio.
 
-  @property
-  def per_animal_w1_ratios(self) -> tuple[float, ...]:
-    """Post over pre Wave-I ratio of each animal."""
-    return tuple(animal.w1_ratio for animal in self.per_animal)
+        Args:
+          frequency_hz: Stimulus frequency; 0 Hz denotes the broadband click.
 
+        Returns:
+          Dimensionless amplitude ratio.
+        """
+        return _lookup_frequency(self.high_level_w1_uv, frequency_hz).ratio
+
+    @property
+    def click_threshold_shift_db(self) -> float:
+        """Post minus pre click ABR threshold shift in dB."""
+        return self.threshold_shift_db(CLICK_FREQUENCY_HZ)
+
+    @property
+    def suprathreshold_w1_ratio(self) -> float:
+        """Post over pre Wave-I ratio of the group-averaged reference tones."""
+        return self.tone_average_w1_uv.ratio
+
+    @property
+    def per_animal_w1_ratios(self) -> tuple[float, ...]:
+        """Per-subject post over pre Wave-I ratio."""
+        return tuple(subject.w1_ratio for subject in self.per_subject)
+
+    @property
+    def has_wave_v(self) -> bool:
+        """Whether this dataset reports Wave-V amplitudes."""
+        return self.high_level_w5_uv is not None
 
 def _lookup_frequency(
   stats_by_frequency: dict[float, PrePostStat],
@@ -224,94 +276,116 @@ def _build_stats(
   return stats, aggregate
 
 
-def _load_per_animal(csv_path: pathlib.Path) -> tuple[AnimalWaveAmplitudes, ...]:
-  """Loads per-animal pre and post wave amplitudes from the CSV file.
+def _load_per_subject(csv_path: pathlib.Path) -> tuple[AnimalWaveAmplitudes, ...]:
+    """Loads per-subject pre and post wave amplitudes from the CSV file.
 
-  Args:
-    csv_path: Path to the per-animal CSV file.
+    Args:
+      csv_path: Path to the per-subject CSV file.
 
-  Returns:
-    Per-animal amplitudes in first-appearance order.
-  """
-  # Read the rows keyed by animal identifier and time point.
-  with csv_path.open(newline="", encoding="utf-8") as handle:
-    rows = list(csv.DictReader(handle))
-  if not rows:
-    raise ValueError(f"No rows found in {csv_path}.")
+    Returns:
+      Per-subject amplitudes in first-appearance order.
+    """
+    # Read the rows keyed by subject identifier and time point.
+    with csv_path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    if not rows:
+        raise ValueError(f"No rows found in {csv_path}.")
 
-  # Group waves by animal, preserving file order.
-  waves: dict[str, dict[str, tuple[float, float]]] = {}
-  for row in rows:
-    animal_id = row["ID"].strip()
-    time_point = row["TimePoint"].strip()
-    waves.setdefault(animal_id, {})[time_point] = (float(row["W1"]), float(row["W5"]))
+    # Group waves by subject, preserving file order.
+    waves: dict[str, dict[str, tuple[float, float]]] = {}
+    for row in rows:
+        subject_id = row["ID"].strip()
+        time_point = row["TimePoint"].strip()
+        if "W5" in row:
+            waves.setdefault(subject_id, {})[time_point] = (float(row["W1"]), float(row["W5"]))
+        else:
+            waves.setdefault(subject_id, {})[time_point] = (float(row["W1"]), None)
 
-  # Require both time points for every animal.
-  animals = []
-  for animal_id, by_time_point in waves.items():
-    missing = {PRE_TIME_POINT, POST_TIME_POINT} - set(by_time_point)
-    if missing:
-      raise ValueError(f"Animal {animal_id} is missing time points {sorted(missing)}.")
-    pre_w1, pre_w5 = by_time_point[PRE_TIME_POINT]
-    post_w1, post_w5 = by_time_point[POST_TIME_POINT]
-    animals.append(
-      AnimalWaveAmplitudes(
-        animal_id=animal_id,
-        pre_w1_uv=pre_w1,
-        post_w1_uv=post_w1,
-        pre_w5_uv=pre_w5,
-        post_w5_uv=post_w5,
-      )
+    # Require both time points for every subject.
+    subjects = []
+    for subject_id, by_time_point in waves.items():
+        missing = {PRE_TIME_POINT, POST_TIME_POINT} - set(by_time_point)
+        if missing:
+            raise ValueError(f"Subject {subject_id} is missing time points {sorted(missing)}.")
+        pre_w1, pre_w5 = by_time_point[PRE_TIME_POINT]
+        post_w1, post_w5 = by_time_point[POST_TIME_POINT]
+        subjects.append(
+            AnimalWaveAmplitudes(
+                animal_id=subject_id,
+                pre_w1_uv=pre_w1,
+                post_w1_uv=post_w1,
+                pre_w5_uv=pre_w5,
+                post_w5_uv=post_w5,
+            )
+        )
+    return tuple(subjects)
+
+
+def load_abr_dataset(
+        species: str = DEFAULT_SPECIES,
+        data_dir: pathlib.Path | str | None = None,
+) -> AbrDataset:
+    """Loads the empirical ABR dataset for one species.
+
+    Args:
+      species: Species key registered in `SPECIES_DATA_FILES` (e.g. "chinchilla", "human").
+      data_dir: Directory holding the data files; defaults to `DEFAULT_DATA_DIR`.
+
+    Returns:
+      Parsed empirical dataset for the requested species.
+    """
+    if species not in SPECIES_DATA_FILES:
+        raise ValueError(
+            f"Unsupported species '{species}'; choose one of {sorted(SPECIES_DATA_FILES)}."
+        )
+    files = SPECIES_DATA_FILES[species]
+
+    # Resolve and validate the input file paths.
+    directory = pathlib.Path(DEFAULT_DATA_DIR if data_dir is None else data_dir)
+    summary_path = directory / files.summary_file_name
+    per_subject_path = directory / files.per_subject_file_name
+    for path in (summary_path, per_subject_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"Empirical data file not found: {path}.")
+
+    # Parse the group summary statistics.
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    frequencies = tuple(float(frequency) for frequency in summary["frequencies_hz"])
+    thresholds, _ = _build_stats(summary["thresholds_db_spl"], frequencies, "thresholds_db_spl")
+    w1_stats, w1_average = _build_stats(summary["high_level_w1_uv"], frequencies, "high_level_w1_uv")
+    if w1_average is None:
+        raise ValueError(f"{species} data: high_level_w1_uv must carry a trailing average entry.")
+
+    # Wave-V is only reported by species registered with has_wave_v=True.
+    w5_stats: dict[float, PrePostStat] | None = None
+    w5_average: PrePostStat | None = None
+    if files.has_wave_v:
+        w5_stats, w5_average = _build_stats(
+            summary["high_level_w5_uv"], frequencies, "high_level_w5_uv"
+        )
+        if w5_average is None:
+            raise ValueError(f"{species} data: high_level_w5_uv must carry a trailing average entry.")
+
+    # Parse the per-subject amplitudes and cross-check the subject identifiers.
+    per_subject = _load_per_subject(per_subject_path)
+    summary_subjects = tuple(str(s) for s in summary.get("subjects", summary.get("animals", [])))
+    csv_subjects = tuple(subject.animal_id for subject in per_subject)
+    if set(summary_subjects) != set(csv_subjects):
+        raise ValueError(
+            f"Subject identifiers disagree: summary {sorted(summary_subjects)} "
+            f"vs per-subject {sorted(csv_subjects)}."
+        )
+
+    return AbrDataset(
+        species=species,
+        source=str(summary["source"]),
+        subjects=summary_subjects,
+        frequencies_hz=frequencies,
+        thresholds_db_spl=thresholds,
+        high_level_w1_uv=w1_stats,
+        tone_average_w1_uv=w1_average,
+        per_subject=per_subject,
+        high_level_w5_uv=w5_stats,
+        tone_average_w5_uv=w5_average,
+        calibration_level_db=float(summary.get("calibration_level_db", 80.0)),
     )
-  return tuple(animals)
-
-
-def load_chinchilla_abr_dataset(
-  data_dir: pathlib.Path | str | None = None,
-) -> ChinchillaAbrDataset:
-  """Loads the Bharadwaj et al. (2022) chinchilla ABR dataset.
-
-  Args:
-    data_dir: Directory holding the data files; defaults to `DEFAULT_DATA_DIR`.
-
-  Returns:
-    Parsed empirical dataset.
-  """
-  # Resolve and validate the input file paths.
-  directory = pathlib.Path(DEFAULT_DATA_DIR if data_dir is None else data_dir)
-  summary_path = directory / SUMMARY_FILE_NAME
-  per_animal_path = directory / PER_ANIMAL_FILE_NAME
-  for path in (summary_path, per_animal_path):
-    if not path.is_file():
-      raise FileNotFoundError(f"Empirical data file not found: {path}.")
-
-  # Parse the group summary statistics.
-  summary = json.loads(summary_path.read_text(encoding="utf-8"))
-  frequencies = tuple(float(frequency) for frequency in summary["frequencies_hz"])
-  thresholds, _ = _build_stats(summary["thresholds_db_spl"], frequencies, "thresholds_db_spl")
-  w1_stats, w1_average = _build_stats(summary["high_level_w1_uv"], frequencies, "high_level_w1_uv")
-  w5_stats, w5_average = _build_stats(summary["high_level_w5_uv"], frequencies, "high_level_w5_uv")
-  if w1_average is None or w5_average is None:
-    raise ValueError("High-level wave blocks must carry a trailing 4/8 kHz average entry.")
-
-  # Parse the per-animal amplitudes and cross-check the animal identifiers.
-  per_animal = _load_per_animal(per_animal_path)
-  summary_animals = tuple(str(animal) for animal in summary["animals"])
-  csv_animals = tuple(animal.animal_id for animal in per_animal)
-  if set(summary_animals) != set(csv_animals):
-    raise ValueError(
-      f"Animal identifiers disagree: summary {sorted(summary_animals)} "
-      f"vs per-animal {sorted(csv_animals)}."
-    )
-
-  return ChinchillaAbrDataset(
-    source=str(summary["source"]),
-    animals=summary_animals,
-    frequencies_hz=frequencies,
-    thresholds_db_spl=thresholds,
-    high_level_w1_uv=w1_stats,
-    high_level_w5_uv=w5_stats,
-    tone_average_w1_uv=w1_average,
-    tone_average_w5_uv=w5_average,
-    per_animal=per_animal,
-  )

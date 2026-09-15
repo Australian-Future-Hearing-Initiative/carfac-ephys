@@ -8,7 +8,12 @@ from click.testing import CliRunner
 
 from carfac_ephys.carfac_model import FiberRetention
 from carfac_ephys.cli import main
-from carfac_ephys.empirical import CLICK_FREQUENCY_HZ, load_chinchilla_abr_dataset
+from carfac_ephys.empirical import (
+  CLICK_FREQUENCY_HZ,
+  DEFAULT_DATA_DIR,
+  SPECIES_DATA_FILES,
+  load_abr_dataset,
+)
 from carfac_ephys.experiment import (
   DEFAULT_COHORT_CONDITIONS,
   THRESHOLD_SHIFT_TOLERANCE_DB,
@@ -261,11 +266,13 @@ class TestCli:
     assert "carfac-ephys-simulate" in result.output or "output-dir" in result.output
     assert "--output-dir" in result.output
     assert "--plot" in result.output
+    assert "--species" in result.output
 
   def test_cli_quick_no_plot(self):
     runner = CliRunner()
     result = runner.invoke(main, ["--quick", "--no-plot"])
     assert result.exit_code == 0
+    assert "Species: chinchilla" in result.output
     assert "ABR Wave-I" in result.output
     assert "EFR Spectral Magnitude" in result.output
     assert "Saved" not in result.output
@@ -275,7 +282,8 @@ class TestCli:
     assert "**" not in result.output
     # The quick sweep cannot bracket the threshold criterion, so that row is
     # skipped while the 80 dB SPL ratio is still reported.
-    assert "Empirical comparison against Bharadwaj et al. (2022):" in result.output
+    assert "Empirical comparison against chinchilla reference data" in result.output
+    assert "Bharadwaj" in result.output
     assert "| Click ABR threshold shift (dB) | n/a |" in result.output
     assert "Suprathreshold Wave-I post/pre ratio" in result.output
 
@@ -297,18 +305,44 @@ class TestCli:
     assert "Saved simulation report" in result.output
     assert (tmp_path / "abr_wave_i_growth.png").exists()
     assert (tmp_path / "efr_growth.png").exists()
-    assert (tmp_path / "empirical_comparison.png").exists()
-    assert (tmp_path / "simulation_report.md").exists()
+    # These two outputs are species-labelled since their content depends on
+    # which empirical dataset was compared against.
+    assert (tmp_path / "empirical_comparison_chinchilla.png").exists()
+    assert (tmp_path / "simulation_report_chinchilla.md").exists()
     assert (tmp_path / "abr_wave_i_growth.png").stat().st_size > 0
     assert (tmp_path / "efr_growth.png").stat().st_size > 0
-    assert (tmp_path / "empirical_comparison.png").stat().st_size > 0
-    assert (tmp_path / "simulation_report.md").stat().st_size > 0
+    assert (tmp_path / "empirical_comparison_chinchilla.png").stat().st_size > 0
+    assert (tmp_path / "simulation_report_chinchilla.md").stat().st_size > 0
 
     # The quick sweep omits the 30-50 dB SPL levels, so the threshold criteria
     # have no data and must not be reported as failures.
-    report = (tmp_path / "simulation_report.md").read_text(encoding="utf-8")
+    report = (tmp_path / "simulation_report_chinchilla.md").read_text(encoding="utf-8")
     assert "OHC Loss Threshold Shift (30-50 dB SPL)**: SKIPPED" in report
     assert "FAILED" not in report
+
+  def test_cli_species_human_labels_outputs(self, tmp_path: pathlib.Path):
+    human_files = SPECIES_DATA_FILES["human"]
+    if not (DEFAULT_DATA_DIR / human_files.per_subject_file_name).is_file():
+      pytest.skip("Human per-subject CSV not yet shipped in data/.")
+
+    runner = CliRunner()
+    result = runner.invoke(
+      main,
+      ["--quick", "--plot", "--species", "human", "--output-dir", str(tmp_path)],
+    )
+    assert result.exit_code == 0
+    assert "Species: human" in result.output
+    assert "Empirical comparison against human reference data" in result.output
+    assert (tmp_path / "empirical_comparison_human.png").exists()
+    assert (tmp_path / "simulation_report_human.md").exists()
+    # Growth curves don't depend on species, so they're never suffixed.
+    assert (tmp_path / "abr_wave_i_growth.png").exists()
+    assert (tmp_path / "efr_growth.png").exists()
+
+  def test_cli_rejects_unknown_species(self):
+    runner = CliRunner()
+    result = runner.invoke(main, ["--species", "axolotl"])
+    assert result.exit_code != 0
 
 
 class TestMarkdownTableFormatter:
@@ -494,11 +528,11 @@ class TestGenerateSimulationReport:
     )
 
     assert "# CARFAC Electrophysiology Cohort Simulation Report" in content
-    assert "Bharadwaj et al. 2022" in content
+    assert "Bharadwaj" in content
     assert "Synaptopathy-50" in content
-    assert "Suprathreshold Wave-I Attenuation vs Animals**: PASSED" in content
-    assert "## 5. Empirical Comparison with Animal Data" in content
-    assert "Animal (Bharadwaj et al. 2022)" in content
+    assert "Suprathreshold Wave-I Attenuation vs Chinchilla Data**: PASSED" in content
+    assert "## 5. Empirical Comparison with Reference Data" in content
+    assert "Empirical (" in content
     assert "ABR Wave-I Onset Amplitude (AU)" in content
     assert "spikes/s" not in content
     assert "Fitted scale factor" in content
@@ -517,7 +551,7 @@ class TestFitResponseScale:
     abr_results = {"Control": [10.0, 67.5298]}
     scale = fit_response_scale_uv_per_au(click_levels, abr_results)
 
-    dataset = load_chinchilla_abr_dataset()
+    dataset = load_abr_dataset("chinchilla")
     expected_uv = dataset.high_level_w1_uv[CLICK_FREQUENCY_HZ].mean_pre
     assert scale * 67.5298 == pytest.approx(expected_uv)
     assert scale > 0.0
@@ -576,12 +610,12 @@ class TestCompareToEmpirical:
   """Tests for compare_to_empirical."""
 
   def test_selective_cohort_matches_the_noise_exposed_animals(self):
-    dataset = load_chinchilla_abr_dataset()
+    dataset = load_abr_dataset("chinchilla")
     comparison = compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS)
 
-    # Both animal reference values come straight from the chinchilla dataset.
-    assert comparison.animal_threshold_shift_db == pytest.approx(dataset.click_threshold_shift_db)
-    assert comparison.animal_w1_ratio == pytest.approx(dataset.wave_i_ratio())
+    # Both reference values come straight from the chinchilla dataset.
+    assert comparison.empirical_threshold_shift_db == pytest.approx(dataset.click_threshold_shift_db)
+    assert comparison.empirical_w1_ratio == pytest.approx(dataset.wave_i_ratio())
 
     # The simulated cohort preserves threshold and reproduces the attenuation.
     assert comparison.simulated_threshold_shift_db == pytest.approx(0.23, abs=0.05)
@@ -608,7 +642,7 @@ class TestCompareToEmpirical:
 
     ratio = comparison.simulated_w1_ratio
     assert ratio is not None
-    assert abs(ratio - comparison.animal_w1_ratio) > W1_RATIO_TOLERANCE
+    assert abs(ratio - comparison.empirical_w1_ratio) > W1_RATIO_TOLERANCE
     assert comparison.w1_ratio_matched is False
 
   def test_quick_sweep_leaves_metrics_unresolved(self):
