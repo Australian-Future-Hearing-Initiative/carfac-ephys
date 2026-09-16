@@ -133,7 +133,7 @@ The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of
 Tone burst stimuli (5 ms duration, 0.5 ms linear rise/fall ramps, 20 Hz stimulation rate, 500 repetitions) are simulated across 30 to 80 dB SPL at 4 kHz and 8 kHz with alternating polarities ($+1.0$ and $-1.0$). Averaging the positive and negative polarity responses cancels the phase-locked cochlear microphonic (CM) and stimulus artifact, isolating the rectified neural compound action potential (Wave-I).
 
 #### 4 kHz Tone-Burst ABR Wave-I (30–80 dB SPL)
-`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=4000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 4 kHz Wave-I amplitude ($1.3684$ µV), giving $\approx 0.0149$ µV/AU.
+Under the default **mode-dependent** strategy (reference: `average`), tone bursts share the composite 4/8 kHz average scale factor ($\approx 0.0184$ µV/AU). Under an `individual` calibration strategy, matching the Control 4 kHz response at 80 dB SPL to the animal 4 kHz pre-exposure baseline ($1.3685$ µV) yields $\approx 0.0149$ µV/AU.
 
 | Condition | 30 dB SPL | 40 dB SPL | 50 dB SPL | 60 dB SPL | 70 dB SPL | 80 dB SPL |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -147,7 +147,7 @@ Tone burst stimuli (5 ms duration, 0.5 ms linear rise/fall ramps, 20 Hz stimulat
 ![4 kHz Tone-Burst ABR Wave-I Growth](assets/abr_wave_i_growth_4k.png)
 
 #### 8 kHz Tone-Burst ABR Wave-I (30–80 dB SPL, high_f=0)
-`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=8000.0)` matches the Control response at 80 dB SPL to the pre-exposure chinchilla 8 kHz Wave-I amplitude ($1.0985$ µV), giving $\approx 0.0261$ µV/AU.
+Under the default **mode-dependent** strategy (reference: `average`), tone bursts share the composite 4/8 kHz average scale factor ($\approx 0.0184$ µV/AU). Under an `individual` calibration strategy, matching the Control 8 kHz response at 80 dB SPL to the animal 8 kHz pre-exposure baseline ($1.0985$ µV) yields $\approx 0.0261$ µV/AU.
 
 > [!NOTE]
 > CARFAC's `high_f_factor` parameter (`default: 0.0`) adjusts the pole distribution and damping for channels near Nyquist ($>4$ kHz) relative to $f_s$, allowing fine-tuning of 8 kHz tone-burst sensitivity relative to 4 kHz. The title reflects the active factor (e.g. `8 kHz Tone Burst (high_f=0)`).
@@ -164,7 +164,7 @@ Tone burst stimuli (5 ms duration, 0.5 ms linear rise/fall ramps, 20 Hz stimulat
 ![8 kHz Tone-Burst ABR Wave-I Growth](assets/abr_wave_i_growth_8k.png)
 
 #### 4/8 kHz Composite Average ABR Wave-I (30–80 dB SPL)
-`carfac_ephys.fit_response_scale_uv_per_au(..., frequency_hz=None)` matches the Control composite response at 80 dB SPL to the animal 4/8 kHz composite baseline ($1.2335$ µV), giving $\approx 0.0184$ µV/AU.
+Matches the Control composite response at 80 dB SPL to the animal 4/8 kHz composite baseline ($1.2335$ µV), providing the shared tone-burst scale factor of $\approx 0.0184$ µV/AU used under the default **mode-dependent** strategy.
 
 | Condition | 30 dB SPL | 40 dB SPL | 50 dB SPL | 60 dB SPL | 70 dB SPL | 80 dB SPL |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -183,13 +183,13 @@ Side-by-side horizontal response waveforms (4 kHz and 8 kHz at 80 dB SPL) demons
 ![Compound ABR Tone-Burst Response Waveforms](assets/tone_burst_waveforms.png)
 
 #### Tone-Burst Empirical Validation Against Chinchilla Data
-Simulated threshold shifts ($0.1$ µV crossing) and suprathreshold post/pre ratios from the `Selective-Synaptopathy` cohort compared against noise-exposed chinchilla tone-burst measurements from Bharadwaj et al. (2022):
+Simulated threshold shifts ($0.1$ µV criterion under the default **mode-dependent** calibration with `average` reference) and suprathreshold post/pre ratios from the `Selective-Synaptopathy` cohort compared against noise-exposed chinchilla tone-burst measurements from Bharadwaj et al. (2022):
 
 | Metric | Simulated (Selective-Synaptopathy) | Animal (Bharadwaj et al. 2022) | Tolerance | Status |
 | :--- | :---: | :---: | :---: | :---: |
-| Tone-Burst 4000 Hz ABR threshold shift (dB) | $+0.55$ | $+1.61$ | $\pm 3$ dB | PASSED |
+| Tone-Burst 4000 Hz ABR threshold shift (dB) | $+0.51$ | $+1.61$ | $\pm 3$ dB | PASSED |
 | Tone-Burst 4000 Hz Wave-I ratio (80 dB SPL) | $0.713$ | $0.626$ | $\pm 0.10$ | PASSED |
-| Tone-Burst 8000 Hz ABR threshold shift (dB) | $+0.43$ | $+2.08$ | $\pm 3$ dB | PASSED |
+| Tone-Burst 8000 Hz ABR threshold shift (dB) | $+0.49$ | $+2.08$ | $\pm 3$ dB | PASSED |
 | Tone-Burst 8000 Hz Wave-I ratio (80 dB SPL) | $0.821$ | $0.831$ | $\pm 0.10$ | PASSED |
 | Tone-Burst 4/8 kHz average ABR threshold shift (dB) | $+1.11$ | $+1.84$ | $\pm 3$ dB | PASSED |
 | Tone-Burst 4/8 kHz average Wave-I ratio (80 dB SPL) | $0.747$ | $0.717$ | $\pm 0.10$ | PASSED |
