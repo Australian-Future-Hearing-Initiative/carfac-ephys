@@ -36,7 +36,6 @@ from carfac_ephys import electrophysiology, empirical, experiment
 @click.option(
   "--calibration-strategy",
   type=click.Choice(list(experiment.CALIBRATION_STRATEGIES), case_sensitive=False),
-  default="individual",
   default="mode-dependent",
   show_default=True,
   help="Calibration strategy to convert AU to µV: 'individual', 'mode-dependent', or 'unified'.",
@@ -60,7 +59,6 @@ def main(
   stimulus: str,
   plot: bool,
   quick: bool,
-  calibration_strategy: str = "individual",
   calibration_strategy: str = "mode-dependent",
   calibration_reference: str = "average",
   high_f_factor: float = 0.0,

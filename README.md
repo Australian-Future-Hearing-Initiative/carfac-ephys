@@ -217,7 +217,6 @@ Carrier $f_c = 2000$ Hz, modulation frequency $f_m = 100$ Hz, $100\%$ modulation
 
 `carfac-ephys` supports three distinct calibration strategies to convert arbitrary response units (AU) to physical microvolts (µV) matching empirical chinchilla recordings:
 
-1. **`individual` (Default)**:
 1. **`mode-dependent` (Default)**:
    Broadband clicks use their dedicated click calibration factor ($\approx 0.0316$ µV/AU), while tone-bursts share a **single common scale factor** determined by `--calibration-reference` (default: `average`, $\approx 0.0184$ µV/AU; or optionally `4k` or `8k`). This preserves relative frequency sensitivity between 4 kHz and 8 kHz tone bursts while accounting for spectral differences against broadband clicks.
 
@@ -227,9 +226,6 @@ Carrier $f_c = 2000$ Hz, modulation frequency $f_m = 100$ Hz, $100\%$ modulation
    - 4 kHz tone-burst scale factor: $\approx 0.0149$ µV/AU
    - 8 kHz tone-burst scale factor: $\approx 0.0261$ µV/AU
    - 4/8 kHz composite average scale factor: $\approx 0.0184$ µV/AU
-
-2. **`mode-dependent`**:
-   Broadband clicks use their dedicated click calibration factor ($\approx 0.0316$ µV/AU), while tone-bursts share a **single common scale factor** determined by `--calibration-reference` (default: `average`, or optionally `4k` or `8k`). This preserves relative frequency sensitivity between 4 kHz and 8 kHz tone bursts while accounting for spectral differences against broadband clicks.
 
 3. **`unified`**:
    A **single universal scale factor** is applied across all stimuli (clicks and tone bursts alike), determined by `--calibration-reference` (default: `average`, or optionally `click`, `4k`, or `8k`).
@@ -255,78 +251,161 @@ uv sync
 
 ### 2. Run Automated Test Suite
 
-Verify all 174 unit and integration tests:
 Verify all 175 unit and integration tests:
 ```bash
 uv run pytest -v
 ```
 
-### 3. Run Cohort Simulation
+#### 3. Run Cohort Simulation (CLI Examples)
 
-Execute simulations across cohorts using the CLI tool:
+The `carfac-ephys-simulate` CLI tool provides comprehensive configuration flags:
 
+#### Full Diagnostic Suite (Default)
+Run all 6 cohorts across click ABR, SAM tone EFR, and 4/8 kHz tone bursts using the default **mode-dependent** calibration (average reference):
 ```bash
-# Run both click and tone-burst simulations with individual calibration (default)
-# Run both click and tone-burst simulations with default mode-dependent calibration (average reference)
 uv run carfac-ephys-simulate --output-dir output/ --stimulus all
-
-# Run with mode-dependent calibration using composite average reference
-uv run carfac-ephys-simulate --output-dir output/ --calibration-strategy mode-dependent --calibration-reference average
-# Run with individual calibration (scaling each stimulus to its own 80 dB peak)
-uv run carfac-ephys-simulate --output-dir output/ --calibration-strategy individual
-
-# Run with unified calibration using click reference
-uv run carfac-ephys-simulate --output-dir output/ --calibration-strategy unified --calibration-reference click
-
-# Run with custom high_f_factor adjusting CARFAC high-frequency tuning (>4 kHz)
-uv run carfac-ephys-simulate --output-dir output/ --high-f-factor 0.5
-
-# Run broadband click and EFR simulations only
-uv run carfac-ephys-simulate --output-dir output/ --stimulus click
-
-# Run 4 kHz and 8 kHz tone-burst simulations only
-uv run carfac-ephys-simulate --output-dir output/ --stimulus tone-burst
 ```
 
-This will:
-1. Run click-evoked ABR simulations from 30 to 80 dB SPL (when `--stimulus all` or `click`).
-2. Run SAM-tone EFR simulations from 40 to 80 dB SPL (when `--stimulus all` or `click`).
-3. Run alternating-polarity 4 kHz and 8 kHz tone-burst simulations from 30 to 80 dB SPL (when `--stimulus all` or `tone-burst`).
-4. Validate all biological signatures, including quantitative comparisons against empirical chinchilla ABR data.
-5. Print summary tables and calibrated scaling factors to stdout.
-6. Save publication-quality figures (`abr_wave_i_growth_click.png`, `abr_wave_i_growth_4k.png`, `abr_wave_i_growth_8k.png`, `abr_wave_i_growth_avg.png`, `tone_burst_waveforms.png`, `efr_growth.png`, `empirical_comparison.png`) and `simulation_report.md` to `output/`.
-
-#### Fast Smoke Test
-To verify the pipeline on a reduced 2-level subset:
+#### Stimulus-Specific Sweeps
+Run simulations targeted to a specific stimulus modality:
 ```bash
-uv run carfac-ephys-simulate --quick --output-dir output/
+# Broadband click ABR and SAM tone EFR simulations only
+uv run carfac-ephys-simulate --output-dir output_clicks/ --stimulus click
+
+# 4 kHz and 8 kHz alternating-polarity tone-burst simulations only
+uv run carfac-ephys-simulate --output-dir output_tone_bursts/ --stimulus tone-burst
 ```
 
-#### Python API Usage
-Simulations can also be invoked directly from Python:
+#### Calibration Strategy Comparisons
+Explore how different scaling assumptions affect microvolt conversion and threshold shift estimation:
+```bash
+# 1. Mode-dependent with composite average reference (Default)
+#    Clicks scale to click peak (~0.0316 µV/AU); tone-bursts share the 4/8 kHz average (~0.0184 µV/AU)
+uv run carfac-ephys-simulate --calibration-strategy mode-dependent --calibration-reference average
 
+# 2. Mode-dependent with 4 kHz reference (tone-bursts share the 4 kHz factor, ~0.0149 µV/AU)
+uv run carfac-ephys-simulate --calibration-strategy mode-dependent --calibration-reference 4k
+
+# 3. Individual calibration (every stimulus scales to its own 80 dB pre-exposure amplitude)
+uv run carfac-ephys-simulate --calibration-strategy individual
+
+# 4. Unified universal calibration (single factor across all stimuli, e.g. click reference)
+uv run carfac-ephys-simulate --calibration-strategy unified --calibration-reference click
+```
+
+#### High-Frequency Tuning with `high_f_factor`
+Adjust CARFAC high-frequency filter distribution and damping for channels $>4$ kHz:
+```bash
+# Fine-tune 8 kHz sensitivity relative to 4 kHz
+uv run carfac-ephys-simulate --stimulus tone-burst --high-f-factor 4.0 --output-dir output_high_f/
+```
+
+#### Fast Smoke Testing & Headless Runs
+```bash
+# Fast 2-level sweep (60 and 80 dB SPL) to quickly test pipeline execution
+uv run carfac-ephys-simulate --quick --output-dir output_quick/
+
+# Headless / CI simulation without generating PNG figures (ASCII tables & metrics only)
+uv run carfac-ephys-simulate --quick --no-plot
+```
+
+---
+
+### 4. Python API Usage
+
+Simulations, calibrations, and metric evaluations can be directly scripted in Python:
+
+#### Example 1: Multi-Frequency Tone Bursts with Calibration & Validation
 ```python
 import carfac_ephys as ce
 
-# 1. Generate tone-burst stimuli with alternating polarity
-burst_pos = ce.generate_tone_burst(frequency_hz=4000.0, peak_db_spl=80.0, polarity=1.0)
-burst_neg = ce.generate_tone_burst(frequency_hz=4000.0, peak_db_spl=80.0, polarity=-1.0)
+# 1. Multi-frequency tone-burst cohort simulation (30 to 80 dB SPL)
+tb_results = ce.simulate_tone_burst_cohort(
+    tone_burst_levels_db=[30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
+    high_f_factor=0.0,
+)
 
-# 2. Multi-frequency tone-burst cohort simulation (30 to 80 dB SPL)
-tb_results = ce.simulate_tone_burst_cohort(tone_burst_levels_db=[30.0, 40.0, 50.0, 60.0, 70.0, 80.0])
-print("4 kHz Control @ 80 dB:", tb_results.results_4k["Control"][-1])
-print("8 kHz Control @ 80 dB:", tb_results.results_8k["Control"][-1])
-print("Composite Avg Control @ 80 dB:", tb_results.composite_results["Control"][-1])
+# 2. Resolve fitted scale factors (mode-dependent with average reference)
+scale_avg = ce.resolve_scale_factor(
+    strategy="mode-dependent",
+    stimulus_type="average",
+    tone_burst_results=tb_results,
+    reference="average",
+)
+print(f"Fitted tone-burst scale factor: {scale_avg:.4g} µV/AU")
 
-# 3. Empirical comparison against Bharadwaj et al. (2022)
-tb_comp = ce.compare_tone_burst_to_empirical(tb_results)
-print(ce.format_tone_burst_comparison_table(tb_comp))
+# 3. Quantitative empirical comparison against chinchilla data (Bharadwaj et al. 2022)
+tb_comp = ce.compare_tone_burst_to_empirical(
+    tone_burst_results=tb_results,
+    calibration_strategy="mode-dependent",
+    calibration_reference="average",
+)
+print("\n" + ce.format_tone_burst_comparison_table(tb_comp))
 
-# 4. Generate waveform figures and input-output growth plots
-wave_4k = ce.simulate_tone_burst_waveforms(frequency_hz=4000.0, level_db=80.0)
-wave_8k = ce.simulate_tone_burst_waveforms(frequency_hz=8000.0, level_db=80.0)
-ce.plot_tone_burst_waveforms(wave_4k, wave_8k, "output/tone_burst_waveforms.png")
+# 4. Save 3-panel composite and individual growth figures
+ce.plot_tone_burst_growth(tb_results, "output/abr_wave_i_growth_tone_burst.png")
 ce.plot_tone_burst_individual_growth(tb_results, "output/")
+```
+
+#### Example 2: Broadband Click ABR and SAM Tone EFR
+```python
+import carfac_ephys as ce
+
+# 1. Run click-evoked ABR and SAM-tone EFR sweeps across default cohorts
+click_levels = [30.0, 40.0, 50.0, 60.0, 70.0, 80.0]
+abr_results = ce.simulate_abr_level_series(click_levels_db=click_levels)
+efr_results = ce.simulate_efr_level_series(efr_levels_db=[40.0, 50.0, 60.0, 70.0, 80.0])
+
+# 2. Evaluate click threshold shifts and suprathreshold Wave-I attenuation
+comparison = ce.compare_to_empirical(click_levels, abr_results)
+print(ce.format_empirical_comparison_table(comparison))
+
+# 3. Plot growth curves and save full Markdown simulation report
+ce.plot_abr_growth(click_levels, abr_results, "output/abr_wave_i_growth_click.png", stimulus_label="Broadband Click")
+ce.plot_efr_growth([40.0, 50.0, 60.0, 70.0, 80.0], efr_results, "output/efr_growth.png")
+ce.generate_simulation_report(click_levels, abr_results, [40.0, 50.0, 60.0, 70.0, 80.0], efr_results, "output/simulation_report.md")
+```
+
+#### Example 3: Side-by-Side Waveforms with High-Frequency Tuning
+```python
+import carfac_ephys as ce
+
+# Simulate 80 dB SPL population response waveforms with custom high-frequency damping
+high_f = 0.25
+waveforms_4k = ce.simulate_tone_burst_waveforms(frequency_hz=4000.0, level_db=80.0, high_f_factor=high_f)
+waveforms_8k = ce.simulate_tone_burst_waveforms(frequency_hz=8000.0, level_db=80.0, high_f_factor=high_f)
+
+# Plot side-by-side waveforms with constrained legend and annotated 8 kHz title
+ce.plot_tone_burst_waveforms(
+    waveforms_4k,
+    waveforms_8k,
+    output_path="output/tone_burst_waveforms.png",
+    level_db=80.0,
+    high_f_factor=high_f,
+)
+```
+
+#### Example 4: Custom Cohort Conditions and Threshold Shift Extraction
+```python
+import carfac_ephys as ce
+
+# Define custom cochlear conditions with specified OHC health and auditory nerve fiber retention
+custom_cohort = {
+    "Control": ce.CohortCondition("Control", ohc_health=1.0, fiber_retention=1.0),
+    "Moderate-Synaptopathy": ce.CohortCondition("Moderate-Synaptopathy", ohc_health=1.0, fiber_retention=0.40),
+    "Partial-OHC-Loss": ce.CohortCondition("Partial-OHC-Loss", ohc_health=0.60, fiber_retention=1.0),
+}
+
+levels = [30.0, 40.0, 50.0, 60.0, 70.0, 80.0]
+results = ce.simulate_abr_level_series(cohort=custom_cohort, click_levels_db=levels)
+
+# Calculate threshold in dB SPL for a 0.1 µV criterion
+scale = ce.fit_response_scale_uv_per_au(levels, results, condition="Control")
+criterion_au = 0.1 / scale
+
+ctrl_thresh = ce.estimate_threshold_db(levels, results["Control"], criterion_au)
+mod_thresh = ce.estimate_threshold_db(levels, results["Moderate-Synaptopathy"], criterion_au)
+print(f"Moderate synaptopathy threshold shift: {mod_thresh - ctrl_thresh:+.2f} dB")
 ```
 
 ---
