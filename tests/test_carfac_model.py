@@ -115,6 +115,7 @@ class TestOhcHealth:
       build_model(ohc_health=np.ones((77, 2)))
 
   def test_numpy_scalar_health(self):
+    # pyrefly: ignore [bad-argument-type]
     model_f32 = build_model(ohc_health=np.float32(0.5))
     assert np.allclose(model_f32.ohc_health, 0.5)
     model_f64 = build_model(ohc_health=np.float64(0.8))
@@ -174,6 +175,7 @@ class TestFiberRetentionScaling:
       build_model(fiber_retention=(0.5, 0.5, 0.5, 0.5))
 
   def test_numpy_scalar_retention(self):
+    # pyrefly: ignore [bad-argument-type]
     model_f32 = build_model(fiber_retention=np.float32(0.5))
     assert np.allclose(model_f32.n_fibers[:, 0], 250.0)
     model_f64 = build_model(fiber_retention=np.float64(0.8))

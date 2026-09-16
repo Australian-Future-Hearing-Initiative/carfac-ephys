@@ -285,8 +285,11 @@ class TestEdgeCasesAndExports:
     assert amplitude_to_db_spl(-1.0) == -np.inf
     arr = np.array([0.0, -0.5, 1.0])
     res = amplitude_to_db_spl(arr)
+    # pyrefly: ignore [bad-index]
     assert res[0] == -np.inf
+    # pyrefly: ignore [bad-index]
     assert res[1] == -np.inf
+    # pyrefly: ignore [bad-index]
     assert np.isclose(res[2], 104.0)
 
   def test_package_exports(self):

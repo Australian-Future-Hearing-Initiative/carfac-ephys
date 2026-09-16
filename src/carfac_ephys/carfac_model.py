@@ -156,6 +156,7 @@ class CarfacModel:
 
     # Run CARFAC segment.
     output = carfac.run_segment(
+      # pyrefly: ignore [bad-argument-type]
       wave_arr,
       self.hypers,
       self.weights,
