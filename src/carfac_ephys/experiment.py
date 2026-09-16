@@ -996,15 +996,21 @@ def plot_tone_burst_waveforms(
   output_path: str | pathlib.Path,
   level_db: float = 80.0,
   high_f_factor: float = 0.0,
+  stimulus_onset_ms: float = 5.0,
+  stimulus_duration_ms: float = 5.0,
 ) -> pathlib.Path:
   """Plots horizontal side-by-side waveforms for 4 kHz and 8 kHz tone bursts across cohorts.
 
   Args:
-    waveforms_4k: Tuple of (time_s, mapping of cohort_name -> waveform) for 4 kHz.
-    waveforms_8k: Tuple of (time_s, mapping of cohort_name -> waveform) for 8 kHz.
+    waveforms_4k: Tuple of (time, mapping of cohort_name -> waveform) for 4 kHz,
+      where time can be in seconds or milliseconds.
+    waveforms_8k: Tuple of (time, mapping of cohort_name -> waveform) for 8 kHz,
+      where time can be in seconds or milliseconds.
     output_path: Path to save the output figure image.
     level_db: Sound level in dB SPL used for the waveforms (default: 80.0).
     high_f_factor: CARFAC high_f_factor parameter.
+    stimulus_onset_ms: Stimulus onset delay in milliseconds (default: 5.0).
+    stimulus_duration_ms: Stimulus duration in milliseconds (default: 5.0).
 
   Returns:
     Path to the saved figure.
@@ -1019,8 +1025,16 @@ def plot_tone_burst_waveforms(
     (ax2, waveforms_8k, format_8k_title("8 kHz Tone Burst (5 ms)", high_f_factor)),
   ]
 
-  for ax, (t_s, waveforms), title in panels:
-    t_ms = t_s * 1e3
+  stim_end_ms = stimulus_onset_ms + stimulus_duration_ms
+
+  for ax, (t_raw, waveforms), title in panels:
+    t_arr = np.asarray(t_raw, dtype=np.float64)
+    # Auto-detect if time is in seconds (max <= 1.0, e.g. 0.02 s) or ms (e.g. 20 ms).
+    if len(t_arr) > 0 and np.max(t_arr) <= 1.0:
+      t_ms = t_arr * 1e3
+    else:
+      t_ms = t_arr
+
     for name, wave in waveforms.items():
       style = COHORT_STYLES.get(
         name,
@@ -1035,8 +1049,15 @@ def plot_tone_burst_waveforms(
         linewidth=1.8,
       )
 
-    # Highlight tone-burst stimulus duration (0-5 ms)
-    ax.axvspan(0.0, 5.0, color="#d0d0d0", alpha=0.35, label="Stimulus Duration (0-5 ms)")
+    # Highlight tone-burst stimulus duration (active burst period)
+    if stimulus_duration_ms > 0:
+      ax.axvspan(
+        stimulus_onset_ms,
+        stim_end_ms,
+        color="#d0d0d0",
+        alpha=0.35,
+        label=f"Stimulus Duration ({stimulus_onset_ms:g}-{stim_end_ms:g} ms)",
+      )
     ax.set_xlabel("Time (ms)", fontsize=11, fontweight="bold")
     ax.set_title(f"{title} @ {level_db:g} dB SPL", fontsize=12, fontweight="bold")
     ax.grid(True, linestyle="--", alpha=0.5)

@@ -273,26 +273,44 @@ class TestPlottingFunctions:
   def test_plot_tone_burst_waveforms(self, tmp_path: pathlib.Path):
     import numpy as np
 
-    t = np.linspace(0.0, 0.02, 200, dtype=np.float32)
+    # Test with time in seconds.
+    t_s = np.linspace(0.0, 0.02, 200, dtype=np.float32)
     waveforms_4k = (
-      t,
+      t_s,
       {
-        "Control": np.sin(2 * np.pi * 4000 * t) * np.exp(-t / 0.005),
-        "Synaptopathy-50": 0.5 * np.sin(2 * np.pi * 4000 * t) * np.exp(-t / 0.005),
+        "Control": np.sin(2 * np.pi * 4000 * t_s) * np.exp(-t_s / 0.005),
+        "Synaptopathy-50": 0.5 * np.sin(2 * np.pi * 4000 * t_s) * np.exp(-t_s / 0.005),
       },
     )
     waveforms_8k = (
-      t,
+      t_s,
       {
-        "Control": np.sin(2 * np.pi * 8000 * t) * np.exp(-t / 0.005),
-        "Synaptopathy-50": 0.5 * np.sin(2 * np.pi * 8000 * t) * np.exp(-t / 0.005),
+        "Control": np.sin(2 * np.pi * 8000 * t_s) * np.exp(-t_s / 0.005),
+        "Synaptopathy-50": 0.5 * np.sin(2 * np.pi * 8000 * t_s) * np.exp(-t_s / 0.005),
       },
     )
-    fig_path = tmp_path / "tone_burst_waveforms.png"
+    fig_path = tmp_path / "tone_burst_waveforms_s.png"
     out_path = plot_tone_burst_waveforms(waveforms_4k, waveforms_8k, fig_path, level_db=80.0)
 
     assert out_path.exists()
     assert out_path.stat().st_size > 0
+
+    # Test with time in milliseconds (as returned by simulate_tone_burst_waveforms).
+    t_ms = np.linspace(0.0, 20.0, 200, dtype=np.float64)
+    waveforms_4k_ms = (
+      t_ms,
+      {"Control": np.ones_like(t_ms)},
+    )
+    waveforms_8k_ms = (
+      t_ms,
+      {"Control": np.ones_like(t_ms)},
+    )
+    fig_path_ms = tmp_path / "tone_burst_waveforms_ms.png"
+    out_path_ms = plot_tone_burst_waveforms(
+      waveforms_4k_ms, waveforms_8k_ms, fig_path_ms, level_db=80.0
+    )
+    assert out_path_ms.exists()
+    assert out_path_ms.stat().st_size > 0
 
   def test_plot_tone_burst_growth(self, tmp_path: pathlib.Path):
     results = ToneBurstCohortResults(

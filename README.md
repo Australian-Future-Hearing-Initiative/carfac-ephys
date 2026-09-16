@@ -178,7 +178,7 @@ Matches the Control composite response at 80 dB SPL to the animal 4/8 kHz compos
 ![4/8 kHz Composite Average ABR Wave-I Growth](assets/abr_wave_i_growth_avg.png)
 
 #### Tone-Burst Response Waveforms at 80 dB SPL
-Side-by-side horizontal response waveforms (4 kHz and 8 kHz at 80 dB SPL) demonstrating the compound neural onset and subsequent rate adaptation:
+Side-by-side horizontal response waveforms (4 kHz and 8 kHz at 80 dB SPL) over a 20 ms window (5 ms pre-stimulus baseline, 5 ms tone-burst stimulus from 5–10 ms highlighted in gray) demonstrating the compound neural onset response and subsequent adaptation:
 
 ![Compound ABR Tone-Burst Response Waveforms](assets/tone_burst_waveforms.png)
 
