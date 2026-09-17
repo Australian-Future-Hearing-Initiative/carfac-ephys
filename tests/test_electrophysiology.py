@@ -52,6 +52,7 @@ class TestComputePopulationRate:
 
   def test_invalid_types_and_values(self):
     with pytest.raises(TypeError):
+      # pyrefly: ignore [bad-argument-type]
       compute_population_rate("invalid")
     with pytest.raises(ValueError, match="NaN or Inf"):
       compute_population_rate(np.array([[1.0, np.nan], [2.0, 3.0]]))
@@ -416,8 +417,10 @@ class TestEdgeCasesAndExports:
 
   def test_string_type_rejection(self):
     with pytest.raises(TypeError):
+      # pyrefly: ignore [bad-argument-type]
       extract_wave_i_amplitude("not an array", sample_rate=32000)
     with pytest.raises(TypeError):
+      # pyrefly: ignore [bad-argument-type]
       extract_efr_amplitude("not an array", sample_rate=32000, fm_hz=100.0)
 
   def test_package_exports(self):

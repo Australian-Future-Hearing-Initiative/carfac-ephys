@@ -19,6 +19,7 @@ from collections.abc import Sequence
 # Directory holding the empirical data files shipped as package data. Resolved
 # through importlib.resources so it also works from an installed wheel; assumes
 # a regular (non-zipped) install, which is what pip and uv produce.
+# pyrefly: ignore [bad-argument-type]
 DEFAULT_DATA_DIR: pathlib.Path = pathlib.Path(str(importlib.resources.files(__package__))) / "data"
 
 # File names of the empirical data files within the data directory.

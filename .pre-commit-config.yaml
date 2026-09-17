@@ -1,0 +1,44 @@
+# Local mirror of the checks CI runs (.github/workflows/test.yml).
+#   one-time:  uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+#   by hand:   uv run pre-commit run --all-files
+#   push stage: uv run pre-commit run pyrefly --all-files --hook-stage pre-push
+# ruff runs on every commit; pyrefly is slower and runs on push; pytest stays in CI.
+minimum_pre_commit_version: "3.0.0"
+# Hooks run only at commit time unless they say otherwise (pyrefly below).
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep in step with the ruff version uv.lock resolves, so the hook and CI agree.
+    rev: v0.16.7
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: debug-statements
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  - repo: local
+    hooks:
+      - id: pyrefly
+        name: pyrefly check (on push)
+        language: system
+        entry: uv run pyrefly check
+        pass_filenames: false
+        stages: [pre-push]

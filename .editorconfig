@@ -1,0 +1,17 @@
+# Editors (PyCharm, VS Code, Cursor, Zed) read this automatically, so an
+# agent's or a person's editor stops fighting ruff over indent and newlines.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
