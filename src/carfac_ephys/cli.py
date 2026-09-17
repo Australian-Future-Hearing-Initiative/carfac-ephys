@@ -4,10 +4,27 @@ import pathlib
 
 import click
 
-from carfac_ephys import electrophysiology, experiment
+from carfac_ephys import electrophysiology, empirical, experiment
 
 
 @click.command(name="carfac-ephys-simulate")
+@click.option(
+  "--species",
+  type=click.Choice(sorted(empirical.SPECIES_DATA_FILES), case_sensitive=False),
+  default=empirical.DEFAULT_SPECIES,
+  show_default=True,
+  help="Empirical dataset to validate and compare simulated responses against.",
+)
+@click.option(
+  "--comparison-group",
+  default=None,
+  help=(
+    "Which impaired/exposed group to compare against baseline (e.g. 'nexp' or "
+    "'ma' for --species human). Defaults to the species' primary comparison "
+    "group (chinchilla: '2wk'; human: 'nexp'); ignored for a species with "
+    "only one comparison group."
+  ),
+)
 @click.option(
   "--output-dir",
   type=click.Path(path_type=pathlib.Path),
@@ -27,11 +44,23 @@ from carfac_ephys import electrophysiology, experiment
   help="Run a fast 2-level sweep instead of the full level series.",
 )
 def main(
+  species: str,
+  comparison_group: str | None,
   output_dir: pathlib.Path,
   plot: bool,
   quick: bool,
 ) -> None:
   """Runs CARFAC cochlear impairment electrophysiology cohort simulations."""
+  # Normalize the species key (Click lowercases choices already, but be
+  # defensive since this also drives file names below).
+  species = species.lower()
+
+  # Load the empirical dataset once, up front, so every section below
+  # (calibration, comparison, plots, report) reports the same
+  # species/comparison_group instead of each re-resolving its own default.
+  data = empirical.load_abr_dataset(species, comparison_group=comparison_group)
+  click.echo(f"Species: {species} (comparison group: {data.comparison_group})")
+
   # Determine stimulus levels.
   click_levels = [60.0, 80.0] if quick else list(experiment.DEFAULT_CLICK_LEVELS_DB)
   efr_levels = [60.0, 80.0] if quick else list(experiment.DEFAULT_EFR_LEVELS_DB)
@@ -57,11 +86,13 @@ def main(
   click.echo("\n" + efr_table + "\n")
 
   # Report the fitted conversion from arbitrary units to microvolts.
-  click.echo(experiment.format_calibration_line(click_levels, abr_results) + "\n")
+  click.echo(
+    experiment.format_calibration_line(click_levels, abr_results, dataset=data, species=species) + "\n"
+  )
 
-  # Quantify the agreement with the chinchilla ABR measurements.
-  comparison = experiment.compare_to_empirical(click_levels, abr_results)
-  click.echo("Empirical comparison against Bharadwaj et al. (2022):")
+  # Quantify the agreement against the selected species' ABR measurements.
+  comparison = experiment.compare_to_empirical(click_levels, abr_results, dataset=data)
+  click.echo(f"Empirical comparison against {species} reference data ({data.source}):")
   click.echo(experiment.format_empirical_comparison_table(comparison) + "\n")
 
   # Generate and save diagnostic figures if requested.
@@ -76,16 +107,26 @@ def main(
     experiment.plot_efr_growth(efr_levels, efr_results, efr_fig_path)
     click.echo(f"Saved EFR growth figure to: {efr_fig_path}")
 
-    empirical_fig_path = output_dir / "empirical_comparison.png"
-    experiment.plot_empirical_comparison(comparison, empirical_fig_path)
+    # Suffixed by species (and, when the species has more than one possible
+    # comparison group, by that group too): these two outputs are the only
+    # ones whose content depends on which empirical dataset was chosen, so
+    # re-running with a different --species/--comparison-group doesn't
+    # silently overwrite the previous result.
+    files = empirical.SPECIES_DATA_FILES[species]
+    variant = species if len(files.comparison_labels) <= 1 else f"{species}_{data.comparison_group}"
+
+    empirical_fig_path = output_dir / f"empirical_comparison_{variant}.png"
+    experiment.plot_empirical_comparison(comparison, empirical_fig_path, dataset=data)
     click.echo(f"Saved empirical comparison figure to: {empirical_fig_path}")
 
-    report_path = output_dir / "simulation_report.md"
+    report_path = output_dir / f"simulation_report_{variant}.md"
     experiment.generate_simulation_report(
       click_levels_db=click_levels,
       abr_results=abr_results,
       efr_levels_db=efr_levels,
       efr_results=efr_results,
+      species=species,
+      dataset=data,
       output_path=report_path,
     )
     click.echo(f"Saved simulation report to: {report_path}")

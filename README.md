@@ -3,9 +3,9 @@
 [![CI Tests](https://github.com/Australian-Future-Hearing-Initiative/carfac-ephys/actions/workflows/test.yml/badge.svg)](https://github.com/Australian-Future-Hearing-Initiative/carfac-ephys)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-In silico reproduction of animal model cochlear impairment electrophysiology using the [CARFAC](https://github.com/google/carfac) (Cascade of Asymmetric Resonators with Fast-Acting Compression) auditory periphery model.
+In silico reproduction of cochlear impairment electrophysiology using the [CARFAC](https://github.com/google/carfac) (Cascade of Asymmetric Resonators with Fast-Acting Compression) auditory periphery model.
 
-This repository demonstrates that CARFAC accurately reproduces the signature electrophysiological dissociations observed in animal models (e.g., chinchilla and mouse studies; Bharadwaj et al. 2022, Mehraei et al. 2016, Ginsberg et al. 2023) across Auditory Brainstem Response (ABR) Wave-I / Compound Action Potential (CAP) and Envelope-Following Response (EFR) level series.
+This repository demonstrates that CARFAC accurately reproduces the signature electrophysiological dissociations observed in both animal models (e.g., chinchilla and mouse studies; Bharadwaj et al. 2022, Mehraei et al. 2016, Ginsberg et al. 2023) and human studies (e.g., Verhulst et al. 2015, Temboury-Gutierrez et al. 2024) across Auditory Brainstem Response (ABR) Wave-I, Compound Action Potential (CAP) and Envelope-Following Response (EFR) level series.
 
 ---
 
@@ -22,9 +22,22 @@ In animal hearing loss studies, controlled cochlear pathologies produce distinct
 
 ---
 
-## 2. How the Synthetic Model Replicates Animal Data
+## 2. How the Synthetic Model Replicates Empirical Data
 
-The core objective of `carfac-ephys` is reproducing the empirical electrophysiological findings of animal synaptopathy studies (specifically **Bharadwaj et al. 2022**, *Commun Biol*, investigating noise-exposed chinchillas) using the CARFAC biophysical cochlear model.
+The core objective of `carfac-ephys` is reproducing the empirical electrophysiological findings of synaptopathy studies using the CARFAC biophysical cochlear model. The pipeline supports two empirical reference datasets, selectable at runtime:
+
+| `--species` | Reference dataset | Comparison axis (`--comparison-group`) | Citation |
+| :--- | :--- | :--- | :--- |
+| `chinchilla` *(default)* | Noise-exposed chinchilla ABR | Repeated measures on the same animal: `pre` vs `2wk` post-exposure | Bharadwaj et al. (2022) |
+| `human` | Human listener ABR (normal-hearing, synaptopathy groups) | Independent groups of listeners: `ctrl` vs `nexp` *(default)* or `ma` | *TODO: confirm citation — currently copied from the chinchilla row; the `ctrl`/`nexp`/`ma` group design doesn't match Bharadwaj et al. (2022)'s repeated-measures chinchilla protocol* |
+
+Chinchilla and human differ in more than species: chinchilla is a *paired* (repeated-measures) design — the same animal is measured `pre` and `2wk` post-exposure, so a per-subject post/pre ratio exists. Human is an *unpaired* (independent-groups) design — `ctrl`, `nexp`, and `ma` are different listeners, so there's no same-subject pairing; only the group-level comparison (`ctrl` vs whichever group `--comparison-group` selects) is meaningful. `empirical.SpeciesDataFiles` records this per species (`condition_column`, `baseline_label`, `comparison_labels`, `paired`), and `load_abr_dataset`/`--comparison-group` handle both without any other code branching on which one was loaded.
+
+`data/human_abr_summary.json` is generated from `Human_Synaptopathy_ABRdata.csv` by `scripts/generate_human_abr_summary.py` (`uv run python scripts/generate_human_abr_summary.py` to regenerate), which computes each group's mean/std directly from the CSV rather than hand-typing numbers. Because the CSV has no true click ABR threshold or per-frequency wave amplitudes (unlike chinchilla's summary), a few modeling choices went into it — see the script's docstring and the JSON's own `notes` field for the full rationale:
+- **Threshold proxy**: `LFA` (low-frequency pure-tone average) stands in for `thresholds_db_spl`, as the closest analog to a broadband click threshold; `HFA`/`EHFA` (high- and extended-high-frequency averages) aren't used.
+- **Single pseudo-frequency**: `frequencies_hz` is `[0]` — there's one Wave-I/Wave-V amplitude per subject, not a per-frequency series, so the schema's mandatory trailing "tone average" entry duplicates that same value rather than a fabricated second one.
+- **`nexp`/`ma` are nested separately** in `thresholds_db_spl`/`high_level_w1_uv`/`high_level_w5_uv`, since the `ctrl` baseline is shared but the comparison side differs by which group was requested — a flat block (chinchilla's shape) can't hold both.
+- A few subjects have a literal `"NaN"` in `w1`/`w5` (1 of 55 `ctrl`, 0 of 53 `nexp`, 3 of 58 `ma`); those are excluded from that field's mean/std only.
 
 ### 2.1 The Animal Experiment Being Replicated
 
@@ -115,7 +128,7 @@ Selective loss of the high-threshold fibers leaves the near-threshold response a
 
 ### Empirical Validation Against Chinchilla ABR Data
 
-The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_chinchilla_abr_dataset`), not from hand-picked bands.
+The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_abr_dataset("chinchilla")`), not from hand-picked bands. The same comparison runs against the packaged human dataset via `load_abr_dataset("human", comparison_group="nexp")` (or `--species human [--comparison-group nexp|ma]` on the CLI); both species share the same `AbrDataset` shape, so nothing else in the pipeline branches on which one is loaded. The two species differ in what "Wave-I ratio" means, though: chinchilla's is a same-animal post/pre ratio (`per_animal_w1_ratios` is populated), while human's is a between-group ratio of independent listeners (`ctrl` vs `comparison_group`), so `per_animal_w1_ratios` is empty for human — see [How the Synthetic Model Replicates Empirical Data](#2-how-the-synthetic-model-replicates-empirical-data).
 
 | Metric | Simulated (Selective-Synaptopathy) | Animal (Bharadwaj et al. 2022) | Tolerance | Status |
 | :--- | :---: | :---: | :---: | :---: |
@@ -158,24 +171,40 @@ uv sync
 
 ### 2. Run Automated Test Suite
 
-Verify all 144 unit and integration tests:
+Verify the unit and integration tests (85 currently):
 ```bash
 uv run pytest -v
 ```
 
 ### 3. Run Cohort Simulation
 
-Execute the full level sweep across all five cohorts:
+Execute the full level sweep against the **chinchilla** dataset (default):
 ```bash
 uv run carfac-ephys-simulate --output-dir output/
 ```
 
+Or validate against the packaged **human** ABR dataset, comparing Control against the noise-exposed (`nexp`) group:
+
+```bash
+uv run carfac-ephys-simulate --species human --output-dir output/
+```
+
+To compare Control against the `ma` group instead, pass `--comparison-group`:
+
+```bash
+uv run carfac-ephys-simulate --species human --comparison-group ma --output-dir output/
+```
+
+> **Note:** the `source` field of `data/human_abr_summary.json` is still a `TODO` placeholder pending citation confirmation — see the table above and [Package Architecture](#5-package-architecture) below.
+
+`--species` accepts `chinchilla` (default) or `human`; both are registered in `empirical.SPECIES_DATA_FILES` and loaded through the same `load_abr_dataset(species, comparison_group=...)` function, so there is no species-specific class or code path to choose between. `--comparison-group` selects which of the species' `comparison_labels` stands in for the impaired/exposed condition (chinchilla only has one: `2wk`; human has `nexp` *(default)* or `ma`) and is ignored for a species with just one option.
+
 This will:
 1. Run click-evoked ABR simulations from 30 to 80 dB SPL.
 2. Run SAM-tone EFR simulations from 40 to 80 dB SPL.
-3. Validate all biological signatures, including the quantitative comparison against the chinchilla ABR data.
-4. Print summary tables to stdout.
-5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`, `empirical_comparison.png`) and `simulation_report.md` to `output/`.
+3. Validate all biological signatures, including the quantitative comparison against the selected `--species`/`--comparison-group` ABR data.
+4. Print summary tables, labelled with the selected species and comparison group, to stdout.
+5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`) and the species-labelled comparison outputs (`empirical_comparison_<species>.png`, `simulation_report_<species>.md`) to `output/`. Only the latter two depend on `--species`/`--comparison-group`, so switching either between runs doesn't overwrite the growth-curve figures; a species with more than one `comparison_labels` option (human) additionally suffixes these two with the comparison group (e.g. `empirical_comparison_human_nexp.png` vs `empirical_comparison_human_ma.png`) so switching `--comparison-group` doesn't overwrite the other group's result either.
 
 #### Fast Smoke Test
 To verify the pipeline on a reduced 2-level subset:
@@ -191,6 +220,8 @@ uv run carfac-ephys-simulate --quick --output-dir output/
 carfac-ephys/
 ├── pyproject.toml              # Standalone dependencies and scripts
 ├── README.md                   # Documentation and walkthrough
+├── scripts/
+│   └── generate_human_abr_summary.py  # Regenerates data/human_abr_summary.json from the CSV
 ├── assets/                     # Published diagnostic figures
 │   ├── abr_wave_i_growth.png
 │   ├── efr_growth.png
@@ -202,8 +233,13 @@ carfac-ephys/
 │       ├── stimuli.py          # Calibrated click and SAM tone generation
 │       ├── carfac_model.py     # Biophysical CARFAC wrapper (OHC & fiber retention)
 │       ├── electrophysiology.py # ABR Wave-I and EFR metric extractors
-│       ├── empirical.py        # Chinchilla ABR dataset loader (Bharadwaj et al. 2022)
+│       ├── empirical.py        # Empirical ABR dataset loader (chinchilla & human, one AbrDataset shape)
 │       ├── data/               # Packaged empirical data files
+│       │   ├── chinchilla_abr_summary.json
+│       │   ├── chinABR_HighLevel_uV_4k_8k_ave.csv
+│       │   ├── human_abr_summary.json          # Generated — see scripts/generate_human_abr_summary.py
+│       │   ├── Human_Synaptopathy_ABRdata.csv
+│       │   └── Human_Synaptopathy_MEMRdata.csv
 │       ├── experiment.py       # Cohort definitions, level sweeps, validation
 │       └── cli.py              # CLI entry point (carfac-ephys-simulate)
 └── tests/
