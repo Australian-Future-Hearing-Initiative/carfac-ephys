@@ -1,5 +1,7 @@
 """Constants and calibration utilities for CARFAC electrophysiology."""
 
+from typing import overload
+
 import numpy as np
 
 # Default acoustic sampling rate in Hz.
@@ -9,6 +11,12 @@ DEFAULT_SAMPLE_RATE: int = 32000
 DYNAMIC_RANGE_DB: float = 104.0
 
 
+# The dB conversions below return a scalar for a scalar and an array for an
+# array. The overloads tell type checkers which one a call site gets.
+@overload
+def db_spl_to_amplitude(db_spl: float) -> float: ...
+@overload
+def db_spl_to_amplitude(db_spl: np.ndarray) -> np.ndarray: ...
 def db_spl_to_amplitude(
   db_spl: float | np.ndarray,
 ) -> float | np.ndarray:
@@ -27,8 +35,12 @@ def db_spl_to_amplitude(
   return 10.0 ** ((db_spl - DYNAMIC_RANGE_DB) / 20.0)
 
 
+@overload
+def amplitude_to_db_spl(amplitude: float | np.floating) -> float: ...
+@overload
+def amplitude_to_db_spl(amplitude: np.ndarray) -> np.ndarray: ...
 def amplitude_to_db_spl(
-  amplitude: float | np.ndarray,
+  amplitude: float | np.floating | np.ndarray,
 ) -> float | np.ndarray:
   """Converts digital linear amplitude to sound pressure level in dB SPL.
 
