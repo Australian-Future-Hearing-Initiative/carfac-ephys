@@ -4,10 +4,25 @@ import pathlib
 
 import click
 
-from carfac_ephys import electrophysiology, experiment
+from carfac_ephys import electrophysiology, empirical, experiment
 
 
 @click.command(name="carfac-ephys-simulate")
+@click.option(
+  "--species",
+  type=click.Choice(sorted(empirical.SPECIES_DATA_FILES), case_sensitive=False),
+  default=empirical.DEFAULT_SPECIES,
+  show_default=True,
+  help="Empirical dataset to compare the simulated cohorts against.",
+)
+@click.option(
+  "--comparison-group",
+  default=None,
+  help=(
+    "Condition to compare against the dataset's baseline "
+    "(human: 'nexp' or 'ma'). Defaults to the dataset's first comparison group."
+  ),
+)
 @click.option(
   "--output-dir",
   type=click.Path(path_type=pathlib.Path),
@@ -27,11 +42,19 @@ from carfac_ephys import electrophysiology, experiment
   help="Run a fast 2-level sweep instead of the full level series.",
 )
 def main(
+  species: str,
+  comparison_group: str | None,
   output_dir: pathlib.Path,
   plot: bool,
   quick: bool,
 ) -> None:
   """Runs CARFAC cochlear impairment electrophysiology cohort simulations."""
+  # Load the dataset once, so every section below reports the same comparison
+  # instead of each re-resolving its own default.
+  dataset = empirical.load_abr_dataset(species.lower(), comparison_group=comparison_group)
+  slug = experiment.dataset_slug(dataset)
+  click.echo(f"Dataset: {dataset.species} ({dataset.comparison_group} vs {dataset.baseline_label})")
+
   # Determine stimulus levels.
   click_levels = [60.0, 80.0] if quick else list(experiment.DEFAULT_CLICK_LEVELS_DB)
   efr_levels = [60.0, 80.0] if quick else list(experiment.DEFAULT_EFR_LEVELS_DB)
@@ -57,11 +80,12 @@ def main(
   click.echo("\n" + efr_table + "\n")
 
   # Report the fitted conversion from arbitrary units to microvolts.
-  click.echo(experiment.format_calibration_line(click_levels, abr_results) + "\n")
+  click.echo(experiment.format_calibration_line(click_levels, abr_results, dataset=dataset) + "\n")
 
-  # Quantify the agreement with the chinchilla ABR measurements.
-  comparison = experiment.compare_to_empirical(click_levels, abr_results)
-  click.echo("Empirical comparison against Bharadwaj et al. (2022):")
+  # Quantify the agreement with the empirical measurements.
+  comparison = experiment.compare_to_empirical(click_levels, abr_results, dataset=dataset)
+  verdict = "Validation" if comparison.validated else "Exploratory comparison"
+  click.echo(f"{verdict} against the {dataset.species} dataset ({dataset.source}):")
   click.echo(experiment.format_empirical_comparison_table(comparison) + "\n")
 
   # Generate and save diagnostic figures if requested.
@@ -76,16 +100,17 @@ def main(
     experiment.plot_efr_growth(efr_levels, efr_results, efr_fig_path)
     click.echo(f"Saved EFR growth figure to: {efr_fig_path}")
 
-    empirical_fig_path = output_dir / "empirical_comparison.png"
-    experiment.plot_empirical_comparison(comparison, empirical_fig_path)
+    empirical_fig_path = output_dir / f"empirical_comparison_{slug}.png"
+    experiment.plot_empirical_comparison(comparison, empirical_fig_path, dataset=dataset)
     click.echo(f"Saved empirical comparison figure to: {empirical_fig_path}")
 
-    report_path = output_dir / "simulation_report.md"
+    report_path = output_dir / f"simulation_report_{slug}.md"
     experiment.generate_simulation_report(
       click_levels_db=click_levels,
       abr_results=abr_results,
       efr_levels_db=efr_levels,
       efr_results=efr_results,
+      dataset=dataset,
       output_path=report_path,
     )
     click.echo(f"Saved simulation report to: {report_path}")
