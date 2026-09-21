@@ -1,0 +1,291 @@
+{
+  "source": "TODO: confirm citation and redistribution permission for Human_Synaptopathy_ABRdata.csv",
+  "design": "independent_groups",
+  "baseline_group": "ctrl",
+  "comparison_groups": [
+    "nexp",
+    "ma"
+  ],
+  "subjects": [
+    "770ce4481db6e676",
+    "bd030307b3902a95",
+    "20f97bd1d5647e58",
+    "c655a2d8f62bc400",
+    "a0657d0d42085a47",
+    "c2e34b8a7e9ca348",
+    "2006f764be826bb4",
+    "d2abe459b3eefef4",
+    "e23cbfc44a93acfd",
+    "40c4d70a1348f08d",
+    "2eab44a2642dc054",
+    "b25d6d1365774045",
+    "c8d8e53b2168fee1",
+    "ce6663be5e816b3c",
+    "6ae150525b68a1ab",
+    "f75585e0b373311f",
+    "6daf319d67145603",
+    "fc07e2b350d8cba5",
+    "92e5b16a082937bc",
+    "92b5198e2c674138",
+    "bf603458dab4078a",
+    "2460269d6068a6e8",
+    "c7609a13a9f115dc",
+    "20866d1feef58786",
+    "94b896b498add8ce",
+    "60febecdf62d3c5b",
+    "f0f516fb0725a48c",
+    "da38972ce892d1d0",
+    "d680b4688e935166",
+    "7dadc5a3f481de51",
+    "15c7e90bc6e7efd0",
+    "bd8a71fe81e3093e",
+    "dc1188073a0246d6",
+    "030610f1f656b1e3",
+    "74dc101584de4e55",
+    "e7d07c179e63103b",
+    "6e82a7ac51b416a1",
+    "0ecc3ee4c5613214",
+    "de63f595a6527ef8",
+    "fd5bf454d13ff5f5",
+    "6427c87966a5b43b",
+    "46aeef1370a29e57",
+    "e593b2c09a6f3f3d",
+    "3f682b9498d3bc8f",
+    "4bf51fd5af0ed0e9",
+    "8cfdb844a36976db",
+    "9514e0e32c16e781",
+    "2d16efbed2512b89",
+    "a880d96de27a7597",
+    "c7702514ac761b02",
+    "81240e62ca299d10",
+    "028c19c457b26a4b",
+    "77ade7fe84f58d50",
+    "2df5eaf922805cfc",
+    "23552eae5da4ed13",
+    "80763c204493ae88",
+    "90fcbce15f2e739f",
+    "6952005827bc34e5",
+    "25f7b99bd1ed5030",
+    "7caaf3ddb163aba8",
+    "b46021dc46c2d726",
+    "a0a9098ab96980b5",
+    "18ec0960612940ed",
+    "17c9231c6e01f6c6",
+    "18672314d05cca4c",
+    "9c20d3d03b691713",
+    "2dbde552c05043ee",
+    "84cade37ce72ccb2",
+    "ba18f6788610ff4f",
+    "269209d80a2fc505",
+    "3ed7406da322fbfb",
+    "c31e58ee43d57cc3",
+    "29391d32ec5c1e6b",
+    "46d09dc644215a34",
+    "36d97b743b8b2616",
+    "d49d705c1d68ef16",
+    "62b99b675e7746b8",
+    "2b9410f9994a9a3f",
+    "2827eade69caa0aa",
+    "cf13c4ad284d52e4",
+    "ce83d16c1b3b6e98",
+    "5339d22a30e4ccf7",
+    "473749b6e4610f15",
+    "e7c194f71a0aba5d",
+    "e9469139d446f2b0",
+    "813ea00a9fe5aa65",
+    "1a99c2bd33005b67",
+    "4573556737ba0fb7",
+    "ed5fa1e699c6fdee",
+    "0deb29710c3c7633",
+    "f15c1571a28cec93",
+    "d87590358530d76d",
+    "6cdfd632d5651b16",
+    "d90007ee7ba9ebf6",
+    "185d3124502e84cd",
+    "0656622609233fa2",
+    "8d84a405706ea829",
+    "06aac8164abfbd96",
+    "1966a437e4149148",
+    "c698e425b846a603",
+    "f5bde2f420635199",
+    "6e006c88052ecd95",
+    "af8ecc0d276d887b",
+    "2d939b9979c8119b",
+    "036c55e6e36680eb",
+    "2c3dd6a8e2d08ef8",
+    "c918380b9941714e",
+    "16bff383644096cc",
+    "67ea589cbdb9ad00",
+    "663b3727d6561758",
+    "b825bac3f219c985",
+    "6c4ee5eb1173e05b",
+    "784242cb9383a75f",
+    "2513a800b931bad5",
+    "cb64d90114af230c",
+    "af6fc4d80d889572",
+    "0c24c4f773de260b",
+    "24506b2233302092",
+    "db308d073e85800f",
+    "0a1415bc2dc525c8",
+    "1e50b84a6b2a2070",
+    "0186e07548d3bde9",
+    "42366989b983462a",
+    "85c405da365e08c4",
+    "5cc19036abfd3bc9",
+    "3b6b68a8c1744c15",
+    "06dba2c9978caf1e",
+    "fa7d37491e95e521",
+    "703d5b8b8e22d0ea",
+    "6e700af25302e414",
+    "8fefa5973c2a5bba",
+    "2f619fd7a097dfce",
+    "b0608d3fbeb41b14",
+    "18a12f81e8f59b0d",
+    "1600de66fb2b7f11",
+    "1236291c4161165c",
+    "94a71c170bbd8ed4",
+    "abc34e31c20c15ea",
+    "0f2cf8a834e8c080",
+    "79cd646a2c277ee3",
+    "5c0b2019256a5ba7",
+    "bfd692c038d9f6d7",
+    "2f0b4a05169249a1",
+    "60ed8e9a543b3f69",
+    "6cd3120059bb631f",
+    "41b73e1efa745f16",
+    "f094db2806f14443",
+    "970adadc058c028b",
+    "bb3a1bf339121f3e",
+    "bf33bb9b866ab2e8",
+    "c68b374302bfe7be",
+    "6927e3f9d4c825d0",
+    "479c38ad917a260c",
+    "df806885ee06c950",
+    "d9ab50207087e345",
+    "5fa3a97122f07cba",
+    "b0b5c930c481ca01",
+    "b926d46ea80d4295",
+    "a9f87362c636eb39",
+    "7b132486aa83f72b",
+    "0da551758dd5ca24",
+    "3d0a36efc513578d",
+    "f1f149f5c3f017cd",
+    "60372e8d4a572c56",
+    "9dcabb26bbb0ba38",
+    "aed6967b3780982a"
+  ],
+  "measures": {
+    "wave1_uv": {
+      "units": "uV",
+      "description": "High-level click ABR Wave-I amplitude."
+    },
+    "wave5_uv": {
+      "units": "uV",
+      "description": "High-level click ABR Wave-V amplitude."
+    },
+    "audiometric_lfa_db_hl": {
+      "units": "dB HL",
+      "description": "Behavioural low-frequency pure-tone average. Listener context only: not an ABR threshold, and not comparable with a simulated threshold in dB SPL."
+    },
+    "audiometric_hfa_db_hl": {
+      "units": "dB HL",
+      "description": "Behavioural high-frequency pure-tone average. Listener context only: not an ABR threshold, and not comparable with a simulated threshold in dB SPL."
+    },
+    "audiometric_ehfa_db_hl": {
+      "units": "dB HL",
+      "description": "Behavioural extended-high-frequency pure-tone average. Listener context only: not an ABR threshold, and not comparable with a simulated threshold in dB SPL."
+    }
+  },
+  "groups": {
+    "ctrl": {
+      "n": 55,
+      "wave1_uv": {
+        "mean": 1.162176543274903,
+        "std": 0.3688927861773719,
+        "n": 54
+      },
+      "wave5_uv": {
+        "mean": 0.6761371518935954,
+        "std": 0.16679633541191882,
+        "n": 54
+      },
+      "audiometric_lfa_db_hl": {
+        "mean": 5.113636363636363,
+        "std": 3.6266178324103713,
+        "n": 55
+      },
+      "audiometric_hfa_db_hl": {
+        "mean": 7.242847818181818,
+        "std": 4.4123768041245786,
+        "n": 55
+      },
+      "audiometric_ehfa_db_hl": {
+        "mean": 6.833272727272727,
+        "std": 11.711196771963564,
+        "n": 55
+      }
+    },
+    "nexp": {
+      "n": 53,
+      "wave1_uv": {
+        "mean": 1.0971834943464467,
+        "std": 0.40304153614494087,
+        "n": 53
+      },
+      "wave5_uv": {
+        "mean": 0.7484916608849289,
+        "std": 0.23298852226764305,
+        "n": 53
+      },
+      "audiometric_lfa_db_hl": {
+        "mean": 4.811320754716981,
+        "std": 4.126866029090472,
+        "n": 53
+      },
+      "audiometric_hfa_db_hl": {
+        "mean": 6.194779811320753,
+        "std": 5.324625821438063,
+        "n": 53
+      },
+      "audiometric_ehfa_db_hl": {
+        "mean": 6.32122641509434,
+        "std": 10.081799333150022,
+        "n": 53
+      }
+    },
+    "ma": {
+      "n": 58,
+      "wave1_uv": {
+        "mean": 0.6136612814898276,
+        "std": 0.24860102067109316,
+        "n": 55
+      },
+      "wave5_uv": {
+        "mean": 0.5170163916733245,
+        "std": 0.14532609355546358,
+        "n": 55
+      },
+      "audiometric_lfa_db_hl": {
+        "mean": 6.890810344827587,
+        "std": 4.355878042921241,
+        "n": 58
+      },
+      "audiometric_hfa_db_hl": {
+        "mean": 10.775735655172413,
+        "std": 6.014958712085411,
+        "n": 58
+      },
+      "audiometric_ehfa_db_hl": {
+        "mean": 38.92239827586207,
+        "std": 11.051534192193635,
+        "n": 58
+      }
+    }
+  },
+  "notes": {
+    "design": "Independent groups: each listener appears in exactly one group, so there is no within-subject pairing and no per-subject ratio. Only ratios of group means are defined for this dataset.",
+    "abr_thresholds": "This dataset reports no ABR thresholds, so none are included. The audiometric_*_db_hl measures are behavioural pure-tone averages in dB HL and are not a substitute for them.",
+    "nan_handling": "Subjects carrying the literal string 'NaN' in a wave amplitude field are excluded from that measure's statistics only; each measure reports its own valid n alongside the group's total n.",
+    "generated_by": "scripts/generate_human_abr_summary.py"
+  }
+}
