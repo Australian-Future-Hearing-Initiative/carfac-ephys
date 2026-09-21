@@ -1,5 +1,6 @@
 """Tests for the human summary generator and the committed summary it produces."""
 
+import csv
 import importlib.util
 import json
 import pathlib
@@ -25,10 +26,67 @@ def generator_fixture():
   return _load_generator()
 
 
+@pytest.fixture(name="synthetic_csv")
+def synthetic_csv_fixture(tmp_path):
+  """Creates invented observations with missing amplitudes and irrelevant IDs."""
+  path = tmp_path / "synthetic.csv"
+  with path.open("w", newline="", encoding="utf-8") as handle:
+    writer = csv.writer(handle)
+    writer.writerow(["ID", "Group", "w1", "w5", "LFA", "HFA", "EHFA"])
+    for group in ("ctrl", "nexp", "ma"):
+      for index, amplitude in enumerate((1, 3, "NaN")):
+        writer.writerow([f"invented-{group}-{index}", group, amplitude, 2, 10, 20, 30])
+  return path
+
+
+def _assert_aggregate_only(summary):
+  """Allows only group counts and aggregate measure statistics in the output."""
+  assert set(summary) == {
+    "source",
+    "design",
+    "baseline_group",
+    "comparison_groups",
+    "measures",
+    "groups",
+    "notes",
+  }
+  for group in summary["groups"].values():
+    assert set(group) == {"n", *summary["measures"]}
+    for measure in summary["measures"]:
+      assert set(group[measure]) == {"mean", "std", "n"}
+
+
+class TestSyntheticSource:
+  def test_missing_values_preserve_group_counts(self, generator, synthetic_csv):
+    summary = generator.build_summary(synthetic_csv)
+
+    for group in summary["groups"].values():
+      assert group["n"] == 3
+      assert group["wave1_uv"] == {"mean": 2.0, "std": pytest.approx(2**0.5), "n": 2}
+      assert group["wave5_uv"] == {"mean": 2.0, "std": 0.0, "n": 3}
+
+  def test_identifiers_are_not_emitted(self, generator, synthetic_csv):
+    summary = generator.build_summary(synthetic_csv)
+
+    _assert_aggregate_only(summary)
+    assert "invented-" not in json.dumps(summary)
+
+  def test_identifier_column_is_not_required(self, generator, synthetic_csv):
+    expected = generator.build_summary(synthetic_csv)
+    with synthetic_csv.open(newline="", encoding="utf-8") as handle:
+      rows = list(csv.reader(handle))
+    with synthetic_csv.open("w", newline="", encoding="utf-8") as handle:
+      csv.writer(handle).writerows(row[1:] for row in rows)
+
+    assert generator.build_summary(synthetic_csv) == expected
+
+
 class TestCommittedSummaryIsUpToDate:
   """The committed JSON must be exactly what the script produces today."""
 
   def test_no_drift_between_script_and_committed_file(self, generator, tmp_path):
+    if not generator.DEFAULT_INPUT_CSV.is_file():
+      pytest.skip("Private human ABR source CSV is unavailable.")
     regenerated = tmp_path / "human_abr_summary.json"
     generator.main(output_path=regenerated)
     assert json.loads(regenerated.read_text(encoding="utf-8")) == json.loads(
@@ -38,11 +96,11 @@ class TestCommittedSummaryIsUpToDate:
       "`uv run python scripts/generate_human_abr_summary.py`."
     )
 
-  def test_main_writes_to_the_requested_path(self, generator, tmp_path):
+  def test_main_writes_to_the_requested_path(self, generator, synthetic_csv, tmp_path):
     target = tmp_path / "nested" / "out.json"
-    written = generator.main(output_path=target)
+    written = generator.main(output_path=target, csv_path=synthetic_csv)
     assert written == target
-    assert target.is_file()
+    assert json.loads(target.read_text(encoding="utf-8")) == generator.build_summary(synthetic_csv)
 
 
 @pytest.fixture(name="summary", scope="module")
@@ -59,11 +117,14 @@ class TestSummaryShape:
     assert summary["baseline_group"] == "ctrl"
     assert summary["comparison_groups"] == ["nexp", "ma"]
 
+  def test_contains_only_aggregate_data(self, summary):
+    _assert_aggregate_only(summary)
+
   def test_group_sizes(self, summary):
     assert summary["groups"]["ctrl"]["n"] == 55
     assert summary["groups"]["nexp"]["n"] == 53
     assert summary["groups"]["ma"]["n"] == 58
-    assert len(summary["subjects"]) == 166
+    assert sum(group["n"] for group in summary["groups"].values()) == 166
 
   def test_wave_i_group_means(self, summary):
     assert summary["groups"]["ctrl"]["wave1_uv"]["mean"] == pytest.approx(1.1622, abs=1e-4)
@@ -71,8 +132,7 @@ class TestSummaryShape:
     assert summary["groups"]["ma"]["wave1_uv"]["mean"] == pytest.approx(0.6137, abs=1e-4)
 
   def test_measures_with_missing_values_report_a_smaller_valid_n(self, summary):
-    # A few subjects carry a literal "NaN" wave amplitude; they still count
-    # towards the group n but not towards that measure's n.
+    # Missing amplitudes reduce the measure count, but not the group count.
     assert summary["groups"]["ctrl"]["wave1_uv"]["n"] == 54
     assert summary["groups"]["nexp"]["wave1_uv"]["n"] == 53
     assert summary["groups"]["ma"]["wave1_uv"]["n"] == 55
@@ -84,7 +144,6 @@ class TestSummaryShape:
     assert summary["measures"]["audiometric_lfa_db_hl"]["units"] == "dB HL"
 
   def test_no_abr_thresholds_are_claimed(self, summary):
-    # The dataset has no ABR thresholds. Behavioural dB HL audiometry must not
-    # be presented as one, so no dB SPL threshold block may appear here.
+    # Behavioural audiometry must not be presented as an ABR threshold.
     assert "thresholds_db_spl" not in summary
     assert all(not key.endswith("db_spl") for key in summary["groups"]["ctrl"])

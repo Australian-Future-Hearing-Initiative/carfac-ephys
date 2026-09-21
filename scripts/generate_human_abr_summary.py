@@ -42,7 +42,6 @@ SOURCE_CITATION = (
 )
 
 GROUP_COLUMN = "Group"
-SUBJECT_COLUMN = "ID"
 BASELINE_GROUP = "ctrl"
 COMPARISON_GROUPS = ("nexp", "ma")
 
@@ -77,7 +76,7 @@ def _measure_stats(values: Sequence[float]) -> dict[str, float | int]:
 
   A few subjects carry the literal string "NaN" in their wave amplitude
   fields. Those subjects are excluded from that measure's statistics only;
-  they are still counted in the group's own `n` and still listed as subjects.
+  they are still counted in the group's own `n`. No identifiers are emitted.
   """
   array = np.asarray(values, dtype=float)
   valid = array[~np.isnan(array)]
@@ -117,7 +116,6 @@ def build_summary(csv_path: pathlib.Path = DEFAULT_INPUT_CSV) -> dict:
     "design": "independent_groups",
     "baseline_group": BASELINE_GROUP,
     "comparison_groups": list(COMPARISON_GROUPS),
-    "subjects": [row[SUBJECT_COLUMN].strip() for row in rows],
     "measures": {
       measure: {"units": units, "description": description}
       for measure, (_column, units, description) in MEASURES.items()

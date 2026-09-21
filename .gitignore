@@ -20,3 +20,7 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Private individual-level human source data (at any directory depth)
+Human_Synaptopathy_ABRdata.csv
+Human_Synaptopathy_MEMRdata.csv
