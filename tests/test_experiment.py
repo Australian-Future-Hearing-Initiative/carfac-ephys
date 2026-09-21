@@ -8,7 +8,7 @@ from click.testing import CliRunner
 
 from carfac_ephys.carfac_model import FiberRetention
 from carfac_ephys.cli import main
-from carfac_ephys.empirical import CLICK_FREQUENCY_HZ, load_chinchilla_abr_dataset
+from carfac_ephys.empirical import load_abr_dataset
 from carfac_ephys.experiment import (
   DEFAULT_COHORT_CONDITIONS,
   THRESHOLD_SHIFT_TOLERANCE_DB,
@@ -517,8 +517,8 @@ class TestFitResponseScale:
     abr_results = {"Control": [10.0, 67.5298]}
     scale = fit_response_scale_uv_per_au(click_levels, abr_results)
 
-    dataset = load_chinchilla_abr_dataset()
-    expected_uv = dataset.high_level_w1_uv[CLICK_FREQUENCY_HZ].mean_pre
+    dataset = load_abr_dataset()
+    expected_uv = dataset.baseline_reference_w1_uv
     assert scale * 67.5298 == pytest.approx(expected_uv)
     assert scale > 0.0
 
@@ -576,7 +576,7 @@ class TestCompareToEmpirical:
   """Tests for compare_to_empirical."""
 
   def test_selective_cohort_matches_the_noise_exposed_animals(self):
-    dataset = load_chinchilla_abr_dataset()
+    dataset = load_abr_dataset()
     comparison = compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS)
 
     # Both animal reference values come straight from the chinchilla dataset.
