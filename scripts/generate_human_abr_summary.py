@@ -30,7 +30,7 @@ import numpy as np
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "src" / "carfac_ephys" / "data"
-DEFAULT_INPUT_CSV = DATA_DIR / "Human_Synaptopathy_ABRdata.csv"
+DEFAULT_INPUT_CSV = REPO_ROOT / "data" / "private" / "Human_Synaptopathy_ABRdata.csv"
 DEFAULT_OUTPUT_JSON = DATA_DIR / "human_abr_summary.json"
 
 # TODO(ben): confirm the citation for this dataset before merging, and confirm
