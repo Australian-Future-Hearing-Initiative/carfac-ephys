@@ -28,14 +28,20 @@ def generator_fixture():
 
 @pytest.fixture(name="synthetic_csv")
 def synthetic_csv_fixture(tmp_path):
-  """Creates invented observations with missing amplitudes and irrelevant IDs."""
+  """Creates distinct groups so mixed-up rows change the expected statistics."""
+  observations = {
+    "ctrl": [(1, 2), (3, 4), ("NaN", 6)],
+    "nexp": [(4, 10), (8, 14)],
+    "ma": [(6, 20), ("NaN", 24), (10, "NaN"), (14, 28)],
+  }
+  audiometry = {"ctrl": (10, 20, 30), "nexp": (11, 21, 31), "ma": (12, 22, 32)}
   path = tmp_path / "synthetic.csv"
   with path.open("w", newline="", encoding="utf-8") as handle:
     writer = csv.writer(handle)
     writer.writerow(["ID", "Group", "w1", "w5", "LFA", "HFA", "EHFA"])
-    for group in ("ctrl", "nexp", "ma"):
-      for index, amplitude in enumerate((1, 3, "NaN")):
-        writer.writerow([f"invented-{group}-{index}", group, amplitude, 2, 10, 20, 30])
+    for group, waves in observations.items():
+      for index, (wave1, wave5) in enumerate(waves):
+        writer.writerow([f"invented-{group}-{index}", group, wave1, wave5, *audiometry[group]])
   return path
 
 
@@ -57,13 +63,31 @@ def _assert_aggregate_only(summary):
 
 
 class TestSyntheticSource:
-  def test_missing_values_preserve_group_counts(self, generator, synthetic_csv):
+  @pytest.mark.parametrize(
+    ("group_name", "group_n", "wave1", "wave5", "audiometry"),
+    [
+      ("ctrl", 3, (2.0, 2**0.5, 2), (4.0, 2.0, 3), (10.0, 20.0, 30.0)),
+      ("nexp", 2, (6.0, 8**0.5, 2), (12.0, 8**0.5, 2), (11.0, 21.0, 31.0)),
+      ("ma", 4, (10.0, 4.0, 3), (24.0, 4.0, 3), (12.0, 22.0, 32.0)),
+    ],
+    ids=["ctrl", "nexp", "ma"],
+  )
+  def test_group_statistics_and_missing_values(
+    self, generator, synthetic_csv, group_name, group_n, wave1, wave5, audiometry
+  ):
     summary = generator.build_summary(synthetic_csv)
 
-    for group in summary["groups"].values():
-      assert group["n"] == 3
-      assert group["wave1_uv"] == {"mean": 2.0, "std": pytest.approx(2**0.5), "n": 2}
-      assert group["wave5_uv"] == {"mean": 2.0, "std": 0.0, "n": 3}
+    group = summary["groups"][group_name]
+    assert group["n"] == group_n
+    # Expected means and sample SDs are calculated independently of the generator.
+    for measure, (mean, std, valid_n) in zip(("wave1_uv", "wave5_uv"), (wave1, wave5)):
+      assert group[measure] == {
+        "mean": pytest.approx(mean),
+        "std": pytest.approx(std),
+        "n": valid_n,
+      }
+    for band, mean in zip(("lfa", "hfa", "ehfa"), audiometry):
+      assert group[f"audiometric_{band}_db_hl"] == {"mean": mean, "std": 0.0, "n": group_n}
 
   def test_identifiers_are_not_emitted(self, generator, synthetic_csv):
     summary = generator.build_summary(synthetic_csv)
