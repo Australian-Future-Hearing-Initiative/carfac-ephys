@@ -1,0 +1,123 @@
+{
+  "source": "TODO: confirm citation and redistribution permission for Human_Synaptopathy_ABRdata.csv",
+  "design": "independent_groups",
+  "baseline_group": "ctrl",
+  "comparison_groups": [
+    "nexp",
+    "ma"
+  ],
+  "measures": {
+    "wave1_uv": {
+      "units": "uV",
+      "description": "High-level click ABR Wave-I amplitude."
+    },
+    "wave5_uv": {
+      "units": "uV",
+      "description": "High-level click ABR Wave-V amplitude."
+    },
+    "audiometric_lfa_db_hl": {
+      "units": "dB HL",
+      "description": "Behavioural low-frequency pure-tone average. Listener context only: not an ABR threshold, and not comparable with a simulated threshold in dB SPL."
+    },
+    "audiometric_hfa_db_hl": {
+      "units": "dB HL",
+      "description": "Behavioural high-frequency pure-tone average. Listener context only: not an ABR threshold, and not comparable with a simulated threshold in dB SPL."
+    },
+    "audiometric_ehfa_db_hl": {
+      "units": "dB HL",
+      "description": "Behavioural extended-high-frequency pure-tone average. Listener context only: not an ABR threshold, and not comparable with a simulated threshold in dB SPL."
+    }
+  },
+  "groups": {
+    "ctrl": {
+      "n": 55,
+      "wave1_uv": {
+        "mean": 1.162176543274903,
+        "std": 0.3688927861773719,
+        "n": 54
+      },
+      "wave5_uv": {
+        "mean": 0.6761371518935954,
+        "std": 0.16679633541191882,
+        "n": 54
+      },
+      "audiometric_lfa_db_hl": {
+        "mean": 5.113636363636363,
+        "std": 3.6266178324103713,
+        "n": 55
+      },
+      "audiometric_hfa_db_hl": {
+        "mean": 7.242847818181818,
+        "std": 4.4123768041245786,
+        "n": 55
+      },
+      "audiometric_ehfa_db_hl": {
+        "mean": 6.833272727272727,
+        "std": 11.711196771963564,
+        "n": 55
+      }
+    },
+    "nexp": {
+      "n": 53,
+      "wave1_uv": {
+        "mean": 1.0971834943464467,
+        "std": 0.40304153614494087,
+        "n": 53
+      },
+      "wave5_uv": {
+        "mean": 0.7484916608849289,
+        "std": 0.23298852226764305,
+        "n": 53
+      },
+      "audiometric_lfa_db_hl": {
+        "mean": 4.811320754716981,
+        "std": 4.126866029090472,
+        "n": 53
+      },
+      "audiometric_hfa_db_hl": {
+        "mean": 6.194779811320753,
+        "std": 5.324625821438063,
+        "n": 53
+      },
+      "audiometric_ehfa_db_hl": {
+        "mean": 6.32122641509434,
+        "std": 10.081799333150022,
+        "n": 53
+      }
+    },
+    "ma": {
+      "n": 58,
+      "wave1_uv": {
+        "mean": 0.6136612814898276,
+        "std": 0.24860102067109316,
+        "n": 55
+      },
+      "wave5_uv": {
+        "mean": 0.5170163916733245,
+        "std": 0.14532609355546358,
+        "n": 55
+      },
+      "audiometric_lfa_db_hl": {
+        "mean": 6.890810344827587,
+        "std": 4.355878042921241,
+        "n": 58
+      },
+      "audiometric_hfa_db_hl": {
+        "mean": 10.775735655172413,
+        "std": 6.014958712085411,
+        "n": 58
+      },
+      "audiometric_ehfa_db_hl": {
+        "mean": 38.92239827586207,
+        "std": 11.051534192193635,
+        "n": 58
+      }
+    }
+  },
+  "notes": {
+    "design": "Independent groups: each listener appears in exactly one group, so there is no within-subject pairing and no per-subject ratio. Only ratios of group means are defined for this dataset.",
+    "abr_thresholds": "This dataset reports no ABR thresholds, so none are included. The audiometric_*_db_hl measures are behavioural pure-tone averages in dB HL and are not a substitute for them.",
+    "nan_handling": "Subjects carrying the literal string 'NaN' in a wave amplitude field are excluded from that measure's statistics only; each measure reports its own valid n alongside the group's total n.",
+    "generated_by": "scripts/generate_human_abr_summary.py"
+  }
+}
