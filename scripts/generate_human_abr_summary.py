@@ -12,6 +12,7 @@ The source CSV holds individual-level recordings and is never committed. Keep
 import argparse
 import csv
 import json
+import math
 import pathlib
 from collections import defaultdict
 from collections.abc import Sequence
@@ -55,20 +56,33 @@ MEASURES: dict[str, tuple[str, str, str]] = {
 }
 
 
-def _measure_stats(values: Sequence[float]) -> dict[str, float | int]:
-  """Returns mean, sample std and valid n for one measure, skipping NaNs.
+# A sample standard deviation is undefined below two observations.
+MIN_VALID_OBSERVATIONS = 2
 
-  A few subjects carry the literal string "NaN" in their wave amplitude
-  fields. Those subjects are excluded from that measure's statistics only;
-  they are still counted in the group's own `n`. No identifiers are emitted.
+
+def _measure_stats(values: Sequence[float], measure: str, group: str) -> dict[str, float | int]:
+  """Returns mean, sample std and valid n for one measure, rejecting undefined statistics.
+
+  Subjects carrying the literal string "NaN" are excluded from that measure
+  only; they still count towards the group's own `n`. No identifiers are
+  emitted. An infinite observation, or too few valid observations for a sample
+  standard deviation, is an error rather than a non-finite value written into
+  the JSON.
   """
   array = np.asarray(values, dtype=float)
+  if bool(np.isinf(array).any()):
+    raise ValueError(f"{group}/{measure}: infinite observation in the source data.")
   valid = array[~np.isnan(array)]
-  return {
-    "mean": float(np.mean(valid)),
-    "std": float(np.std(valid, ddof=1)),
-    "n": int(valid.size),
-  }
+  if valid.size < MIN_VALID_OBSERVATIONS:
+    raise ValueError(
+      f"{group}/{measure}: {valid.size} valid observation(s); at least "
+      f"{MIN_VALID_OBSERVATIONS} are needed for a sample standard deviation."
+    )
+  mean = float(np.mean(valid))
+  std = float(np.std(valid, ddof=1))
+  if not math.isfinite(mean) or not math.isfinite(std):
+    raise ValueError(f"{group}/{measure}: computed non-finite statistics (mean={mean}, std={std}).")
+  return {"mean": mean, "std": std, "n": int(valid.size)}
 
 
 def build_summary(csv_path: pathlib.Path = DEFAULT_INPUT_CSV) -> dict:
@@ -97,7 +111,9 @@ def build_summary(csv_path: pathlib.Path = DEFAULT_INPUT_CSV) -> dict:
     group_rows = rows_by_group[group]
     stats: dict[str, object] = {"n": len(group_rows)}
     for measure, (column, _units, _description) in MEASURES.items():
-      stats[measure] = _measure_stats([float(row[column]) for row in group_rows])
+      stats[measure] = _measure_stats(
+        [float(row[column]) for row in group_rows], measure=measure, group=group
+      )
     groups[group] = stats
 
   return {
