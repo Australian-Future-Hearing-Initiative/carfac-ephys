@@ -54,7 +54,10 @@ class SpeciesDataFiles:
 
   Attributes:
     summary_file_name: JSON file holding the group statistics.
-    per_subject_file_name: CSV file holding per-subject wave amplitudes.
+    per_subject_file_name: CSV file holding per-subject wave amplitudes, or
+      None for a dataset that needs none. An independent-groups dataset is
+      fully described by its group summary, so it declares None rather than
+      naming an input it never reads.
     design: `PAIRED_TIMEPOINTS` or `INDEPENDENT_GROUPS`.
     condition_column: Per-subject CSV column separating the conditions.
     baseline_label: Value of `condition_column` identifying the baseline.
@@ -63,7 +66,7 @@ class SpeciesDataFiles:
   """
 
   summary_file_name: str
-  per_subject_file_name: str
+  per_subject_file_name: str | None
   design: str
   condition_column: str
   baseline_label: str
@@ -83,7 +86,7 @@ SPECIES_DATA_FILES: dict[str, SpeciesDataFiles] = {
   ),
   "human": SpeciesDataFiles(
     summary_file_name="human_abr_summary.json",
-    per_subject_file_name="Human_Synaptopathy_ABRdata.csv",
+    per_subject_file_name=None,
     design=INDEPENDENT_GROUPS,
     condition_column="Group",
     baseline_label="ctrl",
@@ -580,6 +583,8 @@ def load_abr_dataset(
   summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
   if files.design == PAIRED_TIMEPOINTS:
+    if files.per_subject_file_name is None:
+      raise ValueError(f"'{species}' is a paired design but declares no per-subject file.")
     per_subject_path = directory / files.per_subject_file_name
     if not per_subject_path.is_file():
       raise FileNotFoundError(f"Empirical data file not found: {per_subject_path}.")
