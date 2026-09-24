@@ -917,7 +917,7 @@ def _plot_metric_bars(
 def plot_empirical_comparison(
   comparison: EmpiricalComparison,
   output_path: str | pathlib.Path,
-  dataset: empirical.AbrDataset | None = None,
+  dataset: empirical.AbrDataset,
 ) -> pathlib.Path:
   """Plots the simulated cohort against the empirical measurements.
 
@@ -928,14 +928,20 @@ def plot_empirical_comparison(
   Args:
     comparison: Comparison record produced by `compare_to_empirical`.
     output_path: File path for the saved figure.
-    dataset: Empirical dataset supplying per-subject ratios; loaded when None.
+    dataset: Empirical dataset the comparison was produced from.
 
   Returns:
     Path of the saved figure.
   """
   path = pathlib.Path(output_path)
   path.parent.mkdir(parents=True, exist_ok=True)
-  data = empirical.load_abr_dataset() if dataset is None else dataset
+  dataset_identity = (dataset.species, dataset.comparison_group)
+  comparison_identity = (comparison.species, comparison.comparison_group)
+  if dataset_identity != comparison_identity:
+    raise ValueError(
+      f"dataset describes {dataset_identity} but the comparison describes {comparison_identity}."
+    )
+  data = dataset
   reference_label = f"{comparison.species}\n({comparison.comparison_group})"
   reference_threshold_db = comparison.reference_threshold_shift_db
 
