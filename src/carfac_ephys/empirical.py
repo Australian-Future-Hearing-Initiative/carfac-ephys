@@ -43,6 +43,9 @@ CLICK_FREQUENCY_HZ: float = 0.0
 # Study designs a dataset can declare.
 PAIRED_TIMEPOINTS: str = "paired_timepoints"
 INDEPENDENT_GROUPS: str = "independent_groups"
+# Units accepted for ABR wave amplitudes. Calibration downstream treats these
+# numbers as microvolts, so anything else is rejected rather than assumed.
+WAVE_AMPLITUDE_UNITS: frozenset[str] = frozenset({"uV", "µV"})
 
 
 @dataclasses.dataclass(frozen=True)
@@ -508,11 +511,22 @@ def _load_independent_groups_dataset(
   def units_for(measure: str) -> str:
     return str(measures.get(measure, {}).get("units", ""))
 
-  wave1 = _group_stat(summary, "wave1_uv", baseline_group, comparison_label, units_for("wave1_uv"))
+  def wave_units_for(measure: str) -> str:
+    units = units_for(measure)
+    if units not in WAVE_AMPLITUDE_UNITS:
+      raise ValueError(
+        f"Measure '{measure}' declares units {units!r}; wave amplitudes must be "
+        f"one of {sorted(WAVE_AMPLITUDE_UNITS)}."
+      )
+    return units
+
+  wave1 = _group_stat(
+    summary, "wave1_uv", baseline_group, comparison_label, wave_units_for("wave1_uv")
+  )
   wave5 = None
   if "wave5_uv" in summary["groups"][baseline_group]:
     wave5 = _group_stat(
-      summary, "wave5_uv", baseline_group, comparison_label, units_for("wave5_uv")
+      summary, "wave5_uv", baseline_group, comparison_label, wave_units_for("wave5_uv")
     )
 
   # Everything that is not an ABR wave amplitude is context, carried with its
