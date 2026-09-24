@@ -138,6 +138,7 @@ class TestSourceValidation:
     with pytest.raises(ValueError, match="at least 2 are needed"):
       generator.build_summary(self._write(tmp_path, body))
 
+
 class TestCommittedSummaryIsUpToDate:
   """The committed JSON must be exactly what the script produces today."""
 
