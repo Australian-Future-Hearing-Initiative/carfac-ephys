@@ -19,6 +19,10 @@ from carfac_ephys.empirical import (
 
 CHINCHILLA_FILES = SPECIES_DATA_FILES["chinchilla"]
 HUMAN_FILES = SPECIES_DATA_FILES["human"]
+# A paired design always names a per-subject file. Binding it once narrows the
+# optional type for the paired tests below.
+CHINCHILLA_PER_SUBJECT = CHINCHILLA_FILES.per_subject_file_name
+assert CHINCHILLA_PER_SUBJECT is not None
 
 
 @pytest.fixture(name="chinchilla", scope="module")
@@ -39,7 +43,7 @@ def _write_paired_dataset(
   """Writes a synthetic paired (chinchilla-shaped) dataset into a directory."""
   (directory / CHINCHILLA_FILES.summary_file_name).write_text(json.dumps(summary), encoding="utf-8")
   header = "ID,TimePoint,W1,W5\n"
-  (directory / CHINCHILLA_FILES.per_subject_file_name).write_text(
+  (directory / CHINCHILLA_PER_SUBJECT).write_text(
     header + "\n".join(csv_rows) + "\n", encoding="utf-8"
   )
   return directory
@@ -189,7 +193,7 @@ class TestShippedChinchillaDataset:
 
   def test_data_files_exist(self):
     assert (DEFAULT_DATA_DIR / CHINCHILLA_FILES.summary_file_name).is_file()
-    assert (DEFAULT_DATA_DIR / CHINCHILLA_FILES.per_subject_file_name).is_file()
+    assert (DEFAULT_DATA_DIR / CHINCHILLA_PER_SUBJECT).is_file()
 
   def test_species_design_and_source(self, chinchilla):
     assert chinchilla.species == "chinchilla"
@@ -404,7 +408,8 @@ class TestSyntheticGroupedDataset:
   def test_no_per_subject_file_is_required(self, tmp_path):
     # An independent-groups dataset is fully described by its group summary.
     _write_grouped_dataset(tmp_path, _minimal_grouped_summary())
-    assert not (tmp_path / HUMAN_FILES.per_subject_file_name).exists()
+    assert HUMAN_FILES.per_subject_file_name is None
+    assert list(tmp_path.glob("*.csv")) == []
     assert load_abr_dataset("human", tmp_path).per_subject == ()
 
   def test_missing_summary_raises(self, tmp_path):
