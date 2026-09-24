@@ -710,10 +710,20 @@ class TestCompareToEmpirical:
 
   def test_plot_empirical_comparison(self, tmp_path: pathlib.Path):
     out = tmp_path / "empirical_comparison.png"
+    dataset = load_abr_dataset()
     path = plot_empirical_comparison(
-      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS), out
+      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=dataset),
+      out,
+      dataset=dataset,
     )
 
     assert path == out
     assert out.exists()
     assert out.stat().st_size > 1000
+
+  def test_plot_rejects_a_dataset_that_disagrees_with_the_comparison(self, tmp_path):
+    human = compare_to_empirical(
+      FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=load_abr_dataset("human")
+    )
+    with pytest.raises(ValueError, match="but the comparison describes"):
+      plot_empirical_comparison(human, tmp_path / "mismatch.png", dataset=load_abr_dataset())
