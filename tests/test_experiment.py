@@ -664,8 +664,10 @@ class TestCompareToEmpirical:
       FULL_SWEEP_ABR_RESULTS,
       dataset=load_abr_dataset("human", comparison_group="ma"),
     )
+    assert nexp.comparison_group == "nexp"
     assert ma.comparison_group == "ma"
-    assert ma.reference_w1_ratio != pytest.approx(nexp.reference_w1_ratio)
+    assert nexp.reference_w1_ratio == pytest.approx(0.9441, abs=1e-4)
+    assert ma.reference_w1_ratio == pytest.approx(0.5280, abs=1e-4)
 
   def test_human_table_omits_status_and_reports_no_threshold(self):
     comparison = compare_to_empirical(
