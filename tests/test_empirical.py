@@ -4,6 +4,7 @@ import json
 import pathlib
 
 import pytest
+import dataclasses
 
 from carfac_ephys.empirical import (
   CLICK_FREQUENCY_HZ,
@@ -439,3 +440,51 @@ class TestSyntheticGroupedDataset:
     dataset = load_abr_dataset("human", tmp_path)
     assert dataset.has_wave_v is False
     assert dataset.wave5_uv is None
+
+
+class TestSummaryValidation:
+  """Malformed summaries are rejected at the loading boundary, not carried through."""
+
+  @pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+      ("mean", float("nan"), "must be finite"),
+      ("mean", float("inf"), "must be finite"),
+      ("std", -0.1, "must not be negative"),
+      ("n", 1.9, "must be an integer"),
+      ("n", 0, "must be positive"),
+    ],
+    ids=["nan-mean", "inf-mean", "negative-sd", "fractional-n", "zero-n"],
+  )
+  def test_malformed_statistics_are_rejected(self, tmp_path, field, value, message):
+    summary = _minimal_grouped_summary()
+    summary["groups"]["nexp"]["wave1_uv"][field] = value
+    _write_grouped_dataset(tmp_path, summary)
+    with pytest.raises(ValueError, match=message) as error:
+      load_abr_dataset("human", tmp_path)
+    assert "nexp" in str(error.value)
+    assert "wave1_uv" in str(error.value)
+
+  @pytest.mark.parametrize("units", ["mV", "", None], ids=["millivolts", "empty", "missing"])
+  def test_wave_amplitudes_must_declare_microvolts(self, tmp_path, units):
+    summary = _minimal_grouped_summary()
+    if units is None:
+      del summary["measures"]["wave1_uv"]["units"]
+    else:
+      summary["measures"]["wave1_uv"]["units"] = units
+    _write_grouped_dataset(tmp_path, summary)
+    with pytest.raises(ValueError, match="wave amplitudes must be"):
+      load_abr_dataset("human", tmp_path)
+
+  def test_audiometry_keeps_its_own_units(self, tmp_path):
+    # dB HL context must not be forced into the wave-amplitude unit set.
+    _write_grouped_dataset(tmp_path, _minimal_grouped_summary())
+    dataset = load_abr_dataset("human", tmp_path)
+    assert dataset.context_measures["audiometric_lfa_db_hl"].units == "dB HL"
+
+  def test_unknown_design_is_rejected(self, tmp_path, monkeypatch):
+    _write_grouped_dataset(tmp_path, _minimal_grouped_summary())
+    typo = dataclasses.replace(HUMAN_FILES, design="independant_groups")
+    monkeypatch.setitem(SPECIES_DATA_FILES, "human", typo)
+    with pytest.raises(ValueError, match="unsupported design"):
+      load_abr_dataset("human", tmp_path)
