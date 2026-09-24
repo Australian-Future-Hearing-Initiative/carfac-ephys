@@ -54,7 +54,7 @@ from carfac_ephys.experiment import (
 )
 from carfac_ephys.stimuli import generate_click, generate_sam_tone
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
   "AbrDataset",
