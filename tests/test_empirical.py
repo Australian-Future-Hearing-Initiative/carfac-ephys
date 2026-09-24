@@ -1,10 +1,10 @@
 """Tests for the empirical ABR dataset loader, across both study designs."""
 
+import dataclasses
 import json
 import pathlib
 
 import pytest
-import dataclasses
 
 from carfac_ephys.empirical import (
   CLICK_FREQUENCY_HZ,
