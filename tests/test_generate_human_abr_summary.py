@@ -105,6 +105,39 @@ class TestSyntheticSource:
     assert generator.build_summary(synthetic_csv) == expected
 
 
+class TestSourceValidation:
+  """Malformed source rows must fail generation, not slip into the summary."""
+
+  HEADER = "ID,Group,w1,w5,LFA,HFA,EHFA\n"
+  VALID_ROWS = (
+    "invented-1,ctrl,1,2,10,20,30\n"
+    "invented-2,ctrl,3,4,10,20,30\n"
+    "invented-3,nexp,5,6,11,21,31\n"
+    "invented-4,nexp,7,8,11,21,31\n"
+    "invented-5,ma,9,10,12,22,32\n"
+    "invented-6,ma,11,12,12,22,32\n"
+  )
+
+  def _write(self, tmp_path, body):
+    path = tmp_path / "source.csv"
+    path.write_text(self.HEADER + body, encoding="utf-8")
+    return path
+
+  def test_unexpected_group_is_rejected(self, generator, tmp_path):
+    body = self.VALID_ROWS + "invented-7,typo,1,2,10,20,30\n"
+    with pytest.raises(ValueError, match="unexpected group 'typo'"):
+      generator.build_summary(self._write(tmp_path, body))
+
+  def test_infinite_observation_is_rejected(self, generator, tmp_path):
+    body = self.VALID_ROWS.replace("invented-1,ctrl,1,2", "invented-1,ctrl,inf,2")
+    with pytest.raises(ValueError, match="infinite observation"):
+      generator.build_summary(self._write(tmp_path, body))
+
+  def test_single_valid_observation_is_rejected(self, generator, tmp_path):
+    body = self.VALID_ROWS.replace("invented-2,ctrl,3,4", "invented-2,ctrl,NaN,4")
+    with pytest.raises(ValueError, match="at least 2 are needed"):
+      generator.build_summary(self._write(tmp_path, body))
+      
 class TestCommittedSummaryIsUpToDate:
   """The committed JSON must be exactly what the script produces today."""
 
