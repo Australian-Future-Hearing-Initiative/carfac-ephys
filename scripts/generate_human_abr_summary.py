@@ -23,9 +23,7 @@ DATA_DIR = REPO_ROOT / "src" / "carfac_ephys" / "data"
 DEFAULT_INPUT_CSV = REPO_ROOT / "data" / "private" / "Human_Synaptopathy_ABRdata.csv"
 DEFAULT_OUTPUT_JSON = DATA_DIR / "human_abr_summary.json"
 
-SOURCE_CITATION = (
-  "INSERT CITATION HERE for the human ABR dataset"
-)
+SOURCE_CITATION = "INSERT CITATION HERE for the human ABR dataset"
 
 GROUP_COLUMN = "Group"
 BASELINE_GROUP = "ctrl"
