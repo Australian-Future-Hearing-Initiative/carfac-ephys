@@ -589,4 +589,9 @@ def load_abr_dataset(
     if not per_subject_path.is_file():
       raise FileNotFoundError(f"Empirical data file not found: {per_subject_path}.")
     return _load_paired_dataset(species, files, summary, per_subject_path, comparison_label)
-  return _load_independent_groups_dataset(species, files, summary, comparison_label)
+  if files.design == INDEPENDENT_GROUPS:
+    return _load_independent_groups_dataset(species, files, summary, comparison_label)
+  raise ValueError(
+    f"'{species}' declares unsupported design '{files.design}'; "
+    f"expected '{PAIRED_TIMEPOINTS}' or '{INDEPENDENT_GROUPS}'."
+  )
