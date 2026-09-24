@@ -137,7 +137,7 @@ class TestSourceValidation:
     body = self.VALID_ROWS.replace("invented-2,ctrl,3,4", "invented-2,ctrl,NaN,4")
     with pytest.raises(ValueError, match="at least 2 are needed"):
       generator.build_summary(self._write(tmp_path, body))
-      
+
 class TestCommittedSummaryIsUpToDate:
   """The committed JSON must be exactly what the script produces today."""
 
