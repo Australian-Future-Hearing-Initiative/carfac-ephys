@@ -637,20 +637,35 @@ def _ratio_within(
   return low <= (numerator / denominator) <= high
 
 
-# Cohort compared against the noise-exposed chinchillas of Bharadwaj et al.
-# (2022): those animals recovered their click thresholds but kept a reduced
-# suprathreshold Wave-I, the signature of selective LSR/MSR deafferentation.
+# Cohort standing in for impaired subjects: selective LSR/MSR deafferentation,
+# which preserves thresholds while reducing the suprathreshold Wave-I.
 EXPOSED_CONDITION: str = "Selective-Synaptopathy"
 
+# Dataset the cohorts were tuned against. Only this one carries justified
+# tolerances, so only it is scored pass/fail; every other dataset is compared
+# exploratorily until species-specific cohorts exist for it.
+VALIDATION_REFERENCE_SPECIES: str = "chinchilla"
+
 # Wave-I amplitude criterion defining the simulated ABR threshold, in the same
-# microvolt scale as the animal recordings.
+# microvolt scale as the empirical recordings.
 THRESHOLD_CRITERION_UV: float = 0.1
 
-# Tolerances on the agreement between simulation and animal data: 3 dB is the
-# step of the animal threshold search, and 0.10 is the spread of the measured
-# post over pre Wave-I ratio.
+# Tolerances on the agreement with the reference dataset: 3 dB is the step of
+# its threshold search, and 0.10 is the spread of its measured Wave-I ratio.
 THRESHOLD_SHIFT_TOLERANCE_DB: float = 3.0
 W1_RATIO_TOLERANCE: float = 0.10
+
+
+def dataset_slug(dataset: "empirical.AbrDataset") -> str:
+  """Returns the file-name slug identifying a dataset and its comparison.
+
+  Shared by the CLI and the report so the file the report names is the file
+  the CLI actually writes.
+  """
+  files = empirical.SPECIES_DATA_FILES[dataset.species]
+  if len(files.comparison_labels) > 1:
+    return f"{dataset.species}_{dataset.comparison_group}"
+  return dataset.species
 
 
 def _interpolate_crossing_level_db(
@@ -704,19 +719,25 @@ def estimate_threshold_db(
 
 
 class EmpiricalComparison(NamedTuple):
-  """Quantitative comparison of a simulated cohort against animal ABR data.
+  """Simulated cohort measured against one empirical dataset.
 
   Simulated values are None when the sweep lacked the levels needed to compute
-  them. Threshold shifts are in dB and Wave-I ratios are dimensionless post over
-  pre amplitude fractions.
+  them, and `reference_threshold_shift_db` is None when the dataset reports no
+  ABR thresholds at all. `validated` says whether pass/fail is meaningful: the
+  cohorts are tuned to one reference dataset, so against any other dataset this
+  is an exploratory comparison and the `*_matched` flags stay None.
   """
 
   condition: str
+  species: str
+  comparison_group: str
+  dataset_source: str
+  validated: bool
   simulated_threshold_shift_db: float | None
-  animal_threshold_shift_db: float
+  reference_threshold_shift_db: float | None
   threshold_shift_matched: bool | None
   simulated_w1_ratio: float | None
-  animal_w1_ratio: float
+  reference_w1_ratio: float
   w1_ratio_matched: bool | None
 
 
@@ -755,35 +776,40 @@ def compare_to_empirical(
   condition: str = EXPOSED_CONDITION,
   baseline: str = BASELINE_CONDITION,
 ) -> EmpiricalComparison:
-  """Compares simulated ABR thresholds and Wave-I growth against chinchilla data.
+  """Compares simulated ABR thresholds and Wave-I growth against a dataset.
 
-  The noise-exposed chinchillas of Bharadwaj et al. (2022) recovered their click
-  thresholds while losing suprathreshold Wave-I amplitude, so the simulated
-  cohort must reproduce both numbers, not merely rank in the right order.
+  Whether the result is a validation or an exploratory comparison depends on
+  the dataset: the cohorts are tuned to `VALIDATION_REFERENCE_SPECIES`, so only
+  that dataset carries justified tolerances. For any other dataset the values
+  are reported side by side with no pass/fail verdict.
+
+  A dataset that reports no ABR thresholds contributes no threshold comparison;
+  the Wave-I ratio is still compared, as a ratio of group means.
 
   Args:
     click_levels_db: Click sound levels in dB SPL.
     abr_results: Mapping of condition name to Wave-I amplitudes in AU.
     dataset: Empirical dataset; loaded from package data when None.
-    condition: Cohort standing in for the noise-exposed animals.
-    baseline: Cohort treated as the healthy, pre-exposure baseline.
+    condition: Cohort standing in for the impaired subjects.
+    baseline: Cohort treated as the healthy baseline.
 
   Returns:
-    Record of the simulated values, the animal values, and their agreement.
+    Record of the simulated values, the reference values, and their agreement.
   """
   data = empirical.load_abr_dataset() if dataset is None else dataset
+  validated = data.species == VALIDATION_REFERENCE_SPECIES
 
-  # Compare the click threshold shift, which the animals recovered.
-  animal_shift_db = data.click_threshold_shift_db
+  # Threshold shift, only where the dataset actually measured ABR thresholds.
+  reference_shift_db = data.click_threshold_shift_db if data.has_abr_thresholds else None
   simulated_shift_db = _simulated_threshold_shift_db(
     click_levels_db, abr_results, data, condition, baseline
   )
   shift_matched = None
-  if simulated_shift_db is not None:
-    shift_matched = abs(simulated_shift_db - animal_shift_db) <= THRESHOLD_SHIFT_TOLERANCE_DB
+  if validated and simulated_shift_db is not None and reference_shift_db is not None:
+    shift_matched = abs(simulated_shift_db - reference_shift_db) <= THRESHOLD_SHIFT_TOLERANCE_DB
 
-  # Compare the suprathreshold Wave-I attenuation, which the animals retained.
-  animal_w1_ratio = data.wave_i_ratio()
+  # Suprathreshold Wave-I attenuation, as a ratio of group means.
+  reference_w1_ratio = data.reference_w1_ratio
   level_indices = {float(level): index for index, level in enumerate(click_levels_db)}
   exposed_au = _get_level_value(abr_results, level_indices, condition, CALIBRATION_LEVEL_DB)
   baseline_au = _get_level_value(abr_results, level_indices, baseline, CALIBRATION_LEVEL_DB)
@@ -791,139 +817,172 @@ def compare_to_empirical(
   ratio_matched = None
   if exposed_au is not None and baseline_au is not None and baseline_au > 0.0:
     simulated_w1_ratio = exposed_au / baseline_au
-    ratio_matched = abs(simulated_w1_ratio - animal_w1_ratio) <= W1_RATIO_TOLERANCE
+    if validated:
+      ratio_matched = abs(simulated_w1_ratio - reference_w1_ratio) <= W1_RATIO_TOLERANCE
 
   return EmpiricalComparison(
     condition=condition,
+    species=data.species,
+    comparison_group=data.comparison_group,
+    dataset_source=data.source,
+    validated=validated,
     simulated_threshold_shift_db=simulated_shift_db,
-    animal_threshold_shift_db=animal_shift_db,
+    reference_threshold_shift_db=reference_shift_db,
     threshold_shift_matched=shift_matched,
     simulated_w1_ratio=simulated_w1_ratio,
-    animal_w1_ratio=animal_w1_ratio,
+    reference_w1_ratio=reference_w1_ratio,
     w1_ratio_matched=ratio_matched,
   )
 
 
 def format_empirical_comparison_table(comparison: EmpiricalComparison) -> str:
-  """Renders a simulated versus animal comparison as a Markdown table.
+  """Renders a simulated versus reference comparison as a Markdown table.
 
-  Args:
-    comparison: Comparison record produced by `compare_to_empirical`.
-
-  Returns:
-    Formatted Markdown table string.
+  A validated comparison carries tolerance and status columns. An exploratory
+  one reports the two values side by side without them, because the cohorts
+  were not tuned to that dataset and a pass/fail verdict would be misleading.
   """
 
-  # Metrics that were not simulated are reported as unavailable, not as zero.
-  def format_value(value: float | None, spec: str) -> str:
-    return "n/a" if value is None else format(value, spec)
+  def format_value(value: float | None, spec: str, absent: str = "n/a") -> str:
+    return absent if value is None else format(value, spec)
 
-  rows = [
-    (
-      "Click ABR threshold shift (dB)",
-      format_value(comparison.simulated_threshold_shift_db, "+.2f"),
-      format(comparison.animal_threshold_shift_db, "+.2f"),
-      f"+/-{THRESHOLD_SHIFT_TOLERANCE_DB:g} dB",
-      format_check_status(comparison.threshold_shift_matched),
-    ),
-    (
-      f"Suprathreshold Wave-I post/pre ratio ({CALIBRATION_LEVEL_DB:g} dB SPL)",
-      format_value(comparison.simulated_w1_ratio, ".3f"),
-      format(comparison.animal_w1_ratio, ".3f"),
-      f"+/-{W1_RATIO_TOLERANCE:g}",
-      format_check_status(comparison.w1_ratio_matched),
-    ),
+  reference_label = f"{comparison.species} ({comparison.comparison_group})"
+  threshold_row = [
+    "Click ABR threshold shift (dB)",
+    format_value(comparison.simulated_threshold_shift_db, "+.2f"),
+    format_value(comparison.reference_threshold_shift_db, "+.2f", "not measured"),
+  ]
+  ratio_row = [
+    "Suprathreshold Wave-I ratio",
+    format_value(comparison.simulated_w1_ratio, ".3f"),
+    format(comparison.reference_w1_ratio, ".3f"),
+  ]
+  headers = [
+    "Metric",
+    f"Simulated ({comparison.condition}, {CALIBRATION_LEVEL_DB:g} dB SPL)",
+    f"Measured ({reference_label})",
   ]
 
-  headers = (
-    "Metric",
-    f"Simulated ({comparison.condition})",
-    "Animal (Bharadwaj et al. 2022)",
-    "Tolerance",
-    "Status",
-  )
+  if comparison.validated:
+    headers += ["Tolerance", "Status"]
+    threshold_row += [
+      f"+/-{THRESHOLD_SHIFT_TOLERANCE_DB:g} dB",
+      format_check_status(comparison.threshold_shift_matched),
+    ]
+    ratio_row += [
+      f"+/-{W1_RATIO_TOLERANCE:g}",
+      format_check_status(comparison.w1_ratio_matched),
+    ]
+
   lines = [
     "| " + " | ".join(headers) + " |",
     "| " + " | ".join(["---"] * len(headers)) + " |",
-    *("| " + " | ".join(row) + " |" for row in rows),
+    "| " + " | ".join(threshold_row) + " |",
+    "| " + " | ".join(ratio_row) + " |",
   ]
+  if not comparison.validated:
+    lines += [
+      "",
+      f"Exploratory comparison: the cohorts are tuned to the "
+      f"{VALIDATION_REFERENCE_SPECIES} dataset, so these values are reported "
+      f"side by side rather than scored. Source: {comparison.dataset_source}",
+    ]
   return "\n".join(lines)
 
 
 def _plot_metric_bars(
   axis: Any,
   simulated: float | None,
-  animal: float,
-  tolerance: float,
+  reference: float,
+  reference_label: str,
   ylabel: str,
   title: str,
+  tolerance: float | None = None,
 ) -> None:
-  """Draws a simulated versus animal bar pair with the animal tolerance band."""
-  # Shade the acceptance band around the animal value.
-  axis.axhspan(animal - tolerance, animal + tolerance, color="#2ca02c", alpha=0.15)
-  axis.axhline(animal, color="#2ca02c", linestyle="--", linewidth=1.5)
+  """Draws a simulated versus reference bar pair.
 
-  # Draw the two bars, leaving the simulated one empty when it is unavailable.
-  values = [0.0 if simulated is None else simulated, animal]
-  axis.bar(
-    ["Simulated", "Animal"],
-    values,
-    color=["#9467bd", "#2ca02c"],
-    width=0.55,
-  )
+  The tolerance band is drawn only when one applies: for an exploratory
+  comparison there is no acceptance band to show.
+  """
+  if tolerance is not None:
+    axis.axhspan(reference - tolerance, reference + tolerance, color="#2ca02c", alpha=0.15)
+    axis.axhline(reference, color="#2ca02c", linestyle="--", linewidth=1.5)
+
+  values = [0.0 if simulated is None else simulated, reference]
+  axis.bar(["Simulated", reference_label], values, color=["#1f77b4", "#2ca02c"])
   if simulated is None:
-    axis.text(0, 0, "n/a", ha="center", va="bottom", fontsize=10)
+    axis.text(0, 0, "n/a", ha="center", va="bottom", fontsize=9)
 
-  axis.set_ylabel(ylabel, fontsize=10, fontweight="bold")
+  axis.set_ylabel(ylabel, fontsize=10)
   axis.set_title(title, fontsize=11, fontweight="bold")
-  axis.grid(True, axis="y", linestyle="--", alpha=0.5)
+  axis.axhline(0.0, color="#333333", linewidth=0.8)
 
 
 def plot_empirical_comparison(
   comparison: EmpiricalComparison,
   output_path: str | pathlib.Path,
-  dataset: empirical.AbrDataset | None = None,
+  dataset: empirical.AbrDataset,
 ) -> pathlib.Path:
-  """Plots the simulated cohort against the chinchilla ABR measurements.
+  """Plots the simulated cohort against the empirical measurements.
+
+  Panels are drawn only for quantities the dataset actually reports: a dataset
+  without ABR thresholds gets the Wave-I panel alone, and per-subject points
+  are overlaid only for a paired design, where they exist.
 
   Args:
     comparison: Comparison record produced by `compare_to_empirical`.
     output_path: File path for the saved figure.
-    dataset: Empirical dataset supplying per-animal ratios; loaded when None.
+    dataset: Empirical dataset the comparison was produced from.
 
   Returns:
     Path of the saved figure.
   """
   path = pathlib.Path(output_path)
   path.parent.mkdir(parents=True, exist_ok=True)
-  data = empirical.load_abr_dataset() if dataset is None else dataset
+  dataset_identity = (dataset.species, dataset.comparison_group)
+  comparison_identity = (comparison.species, comparison.comparison_group)
+  if dataset_identity != comparison_identity:
+    raise ValueError(
+      f"dataset describes {dataset_identity} but the comparison describes {comparison_identity}."
+    )
+  data = dataset
+  reference_label = f"{comparison.species}\n({comparison.comparison_group})"
+  reference_threshold_db = comparison.reference_threshold_shift_db
 
-  # Render one panel per validated metric.
-  fig, (threshold_ax, ratio_ax) = plt.subplots(1, 2, figsize=(9, 4.5), dpi=300)
-  _plot_metric_bars(
-    axis=threshold_ax,
-    simulated=comparison.simulated_threshold_shift_db,
-    animal=comparison.animal_threshold_shift_db,
-    tolerance=THRESHOLD_SHIFT_TOLERANCE_DB,
-    ylabel="Click ABR Threshold Shift (dB)",
-    title="Threshold Preservation",
-  )
+  n_panels = 2 if reference_threshold_db is not None else 1
+  fig, axes = plt.subplots(1, n_panels, figsize=(4.5 * n_panels, 4.5), dpi=300, squeeze=False)
+  panels = list(axes[0])
+
+  if reference_threshold_db is not None:
+    _plot_metric_bars(
+      axis=panels.pop(0),
+      simulated=comparison.simulated_threshold_shift_db,
+      reference=reference_threshold_db,
+      reference_label=reference_label,
+      tolerance=THRESHOLD_SHIFT_TOLERANCE_DB if comparison.validated else None,
+      ylabel="Click ABR Threshold Shift (dB)",
+      title="Threshold Shift",
+    )
+  ratio_ax = panels[0]
   _plot_metric_bars(
     axis=ratio_ax,
     simulated=comparison.simulated_w1_ratio,
-    animal=comparison.animal_w1_ratio,
-    tolerance=W1_RATIO_TOLERANCE,
-    ylabel="Wave-I Post / Pre Amplitude Ratio",
-    title=f"Suprathreshold Wave-I ({CALIBRATION_LEVEL_DB:g} dB SPL)",
+    reference=comparison.reference_w1_ratio,
+    reference_label=reference_label,
+    tolerance=W1_RATIO_TOLERANCE if comparison.validated else None,
+    ylabel="Wave-I Amplitude Ratio",
+    title=f"Suprathreshold Wave-I ratio (simulated at {CALIBRATION_LEVEL_DB:g} dB SPL)",
   )
 
-  # Overlay the individual animals to show the measured spread.
+  # Per-subject points exist only where subjects were measured twice.
   ratios = data.paired_w1_ratios
-  ratio_ax.scatter([1] * len(ratios), ratios, color="#111111", s=18, zorder=3, label="Animals")
-  ratio_ax.legend(fontsize=8, loc="upper right")
+  if ratios:
+    ratio_ax.scatter([1] * len(ratios), ratios, color="#111111", s=18, zorder=3, label="Subjects")
+    ratio_ax.legend(fontsize=8, loc="upper right")
 
+  verdict = "Validation" if comparison.validated else "Exploratory comparison"
   fig.suptitle(
-    f"{comparison.condition} vs Noise-Exposed Chinchillas (Bharadwaj et al. 2022)",
+    f"{comparison.condition} vs {comparison.species} ({comparison.comparison_group}) — {verdict}",
     fontsize=12,
     fontweight="bold",
   )
@@ -966,11 +1025,12 @@ def validate_biological_signatures(
   efr_results: Mapping[str, Sequence[float]],
   dataset: empirical.AbrDataset | None = None,
 ) -> BiologicalValidation:
-  """Validates simulated electrophysiology against animal literature findings.
+  """Validates simulated electrophysiology against reference literature findings.
 
-  Criteria reference Bharadwaj et al. (2022), Mehraei et al. (2016), and Ruggero et al. (1997).
-  The selective synaptopathy criteria are checked against the measured chinchilla
-  threshold shift and Wave-I ratio rather than hand-picked bands.
+  Criteria reference Mehraei et al. (2016) and Ruggero et al. (1997), plus the
+  empirical dataset supplied. The empirical criteria are scored only against
+  the dataset the cohorts were tuned to; see `VALIDATION_REFERENCE_SPECIES`.
+  Against any other dataset they report as skipped rather than failing.
 
   Args:
     click_levels_db: Click sound levels in dB SPL.
@@ -1062,6 +1122,7 @@ def validate_biological_signatures(
 def format_calibration_line(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
+  dataset: empirical.AbrDataset | None = None,
 ) -> str:
   """Renders the fitted microvolt scale, or a note when it cannot be fitted.
 
@@ -1069,13 +1130,14 @@ def format_calibration_line(
   verbatim.
   """
   try:
-    scale = fit_response_scale_uv_per_au(click_levels_db, abr_results)
+    data = empirical.load_abr_dataset() if dataset is None else dataset
+    scale = fit_response_scale_uv_per_au(click_levels_db, abr_results, dataset=data)
   except (ValueError, KeyError, FileNotFoundError) as error:
     return f"Scale factor unavailable: {error}"
   return (
     f"Fitted scale factor: {scale:.4g} uV/{electrophysiology.RESPONSE_UNIT}, matching the "
-    f"{BASELINE_CONDITION} response at {CALIBRATION_LEVEL_DB:g} dB SPL to the pre-exposure "
-    "chinchilla click Wave-I amplitude (Bharadwaj et al. 2022)."
+    f"{BASELINE_CONDITION} response at {CALIBRATION_LEVEL_DB:g} dB SPL to the baseline "
+    f"({data.baseline_label}) high-level Wave-I amplitude of the {data.species} dataset."
   )
 
 
@@ -1084,6 +1146,7 @@ def generate_simulation_report(
   abr_results: Mapping[str, Sequence[float]],
   efr_levels_db: Sequence[float],
   efr_results: Mapping[str, Sequence[float]],
+  dataset: empirical.AbrDataset | None = None,
   output_path: str | pathlib.Path | None = None,
 ) -> str:
   """Generates a Markdown simulation report summarizing cohort electrophysiology.
@@ -1093,17 +1156,21 @@ def generate_simulation_report(
     abr_results: Mapping of condition name to ABR Wave-I onset amplitudes.
     efr_levels_db: SAM tone carrier sound levels in dB SPL.
     efr_results: Mapping of condition name to EFR spectral magnitudes.
+    dataset: Empirical dataset to compare against; loaded when None.
     output_path: Optional file path to write the markdown report.
 
   Returns:
     Markdown report content string.
   """
+  data = empirical.load_abr_dataset() if dataset is None else dataset
+
   # Evaluate biological signature criteria.
   validation = validate_biological_signatures(
     click_levels_db=click_levels_db,
     abr_results=abr_results,
     efr_levels_db=efr_levels_db,
     efr_results=efr_results,
+    dataset=data,
   )
 
   # Format markdown data tables.
@@ -1111,10 +1178,10 @@ def generate_simulation_report(
   efr_md = format_markdown_table(efr_levels_db, efr_results)
 
   # Fit the microvolt scale; skip it when the calibration level was not simulated.
-  calibration_line = format_calibration_line(click_levels_db, abr_results)
+  calibration_line = format_calibration_line(click_levels_db, abr_results, dataset=data)
 
-  # Quantify the agreement with the chinchilla measurements.
-  comparison = compare_to_empirical(click_levels_db, abr_results)
+  # Quantify the agreement with the empirical measurements.
+  comparison = compare_to_empirical(click_levels_db, abr_results, dataset=data)
   empirical_md = format_empirical_comparison_table(comparison)
 
   # Both fiber retention levels are reported as a single scaling criterion.
@@ -1128,9 +1195,12 @@ def generate_simulation_report(
     "",
     "## 1. Executive Summary",
     "",
-    "This report presents in silico reproduction of animal model cochlear impairment",
-    "electrophysiology (Auditory Brainstem Response Wave-I and Envelope Following Response)",
-    "using the CARFAC (Cascade of Asymmetric Resonators with Fast-Acting Compression) model.",
+    "This report presents in silico reproduction of cochlear impairment electrophysiology",
+    "(Auditory Brainstem Response Wave-I and Envelope Following Response) using the CARFAC",
+    "(Cascade of Asymmetric Resonators with Fast-Acting Compression) model, compared against",
+    f"the {data.species} dataset ({data.comparison_group} vs {data.baseline_label}).",
+    "",
+    f"Source: {data.source}",
     "",
     "## 2. Experimental Cohorts",
     "",
@@ -1161,7 +1231,8 @@ def generate_simulation_report(
     "",
     "## 4. Biological Signature Verification",
     "",
-    "Comparison against animal literature (Bharadwaj et al. 2022, Mehraei et al. 2016, Ruggero et al. 1997):",
+    "Comparison against reference literature (Mehraei et al. 2016, Ruggero et al. 1997)",
+    f"and the {data.species} dataset:",
     "",
     f"- **Synaptopathy Low-Level Preservation (30-40 dB SPL)**: {format_check_status(validation.synaptopathy_low_preserved)}",
     "  - Wave-I onset response is maintained close to control levels, preserving low-level hearing threshold.",
@@ -1170,10 +1241,12 @@ def generate_simulation_report(
     "  - 25% fiber retention scales Wave-I amplitude by ~75% (actual ~27.0% remaining).",
     f"- **Selective LSR/MSR Threshold Sparing (30-40 dB SPL)**: {format_check_status(validation.selective_low_level_spared)}",
     "  - Intact HSR fibers carry the near-threshold response, which stays above 85% of Control (~97% measured).",
-    f"- **Click Threshold Preservation vs Animals**: {format_check_status(validation.empirical_threshold_shift_matched)}",
-    f"  - Simulated threshold shift is within {THRESHOLD_SHIFT_TOLERANCE_DB:g} dB of the measured chinchilla shift.",
-    f"- **Suprathreshold Wave-I Attenuation vs Animals**: {format_check_status(validation.empirical_w1_ratio_matched)}",
-    f"  - Simulated post/pre Wave-I ratio is within {W1_RATIO_TOLERANCE:g} of the measured chinchilla ratio.",
+    f"- **Click Threshold Preservation**: {format_check_status(validation.empirical_threshold_shift_matched)}",
+    f"  - Scored only against the {VALIDATION_REFERENCE_SPECIES} dataset, within "
+    f"{THRESHOLD_SHIFT_TOLERANCE_DB:g} dB, and only where ABR thresholds were measured.",
+    f"- **Suprathreshold Wave-I Attenuation**: {format_check_status(validation.empirical_w1_ratio_matched)}",
+    f"  - Scored only against the {VALIDATION_REFERENCE_SPECIES} dataset, within "
+    f"{W1_RATIO_TOLERANCE:g} of the measured Wave-I ratio.",
     f"- **EFR Suprathreshold Attenuation**: {format_check_status(validation.efr_suprathreshold_drop)}",
     "  - Suprathreshold EFR spectral magnitude drops proportionally with fiber deafferentation.",
     f"- **OHC Loss Threshold Shift (30-50 dB SPL)**: {format_check_status(validation.ohc_threshold_shifted)}",
@@ -1198,7 +1271,8 @@ def generate_simulation_report(
     "",
     "- `abr_wave_i_growth.png`: ABR Wave-I input-output growth curves across sound levels.",
     "- `efr_growth.png`: Envelope Following Response spectral magnitude growth curves.",
-    "- `empirical_comparison.png`: Simulated versus measured chinchilla threshold shift and Wave-I ratio.",
+    f"- `empirical_comparison_{dataset_slug(data)}.png`: Simulated versus measured "
+    f"{data.species} Wave-I ratio, and threshold shift where it was measured.",
     "",
   ]
   report_text = "\n".join(report_lines)
