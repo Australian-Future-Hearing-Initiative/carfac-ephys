@@ -183,7 +183,7 @@ This will:
 
 #### Choosing the Empirical Dataset
 
-`--species` selects which packaged dataset the simulation is compared against, and `--comparison-group` selects which condition within it is compared to that dataset's baseline:
+`--species` selects which **empirical reference** the simulation is compared against. It does not change the simulation: the cohorts and every model parameter stay exactly the same, so `--species human` produces an exploratory comparison against human data rather than switching to a human-specific model. `--comparison-group` selects which condition within that dataset is compared to its baseline:
 
 ```bash
 uv run carfac-ephys-simulate --species human --comparison-group ma --output-dir output/
@@ -193,6 +193,8 @@ uv run carfac-ephys-simulate --species human --comparison-group ma --output-dir 
 | :--- | :--- | :--- | :--- |
 | `chinchilla` *(default)* | `pre` | `2wk` | Same animal measured twice |
 | `human` | `ctrl` | `nexp` *(default)*, `ma` | Independent groups of listeners |
+
+Running a human comparison needs nothing beyond the packaged aggregate summary; the individual-level source recordings are not required.
 
 The cohorts are tuned to the chinchilla data, so only that comparison is scored against tolerances. Against the human dataset the simulated and measured values are reported side by side as an exploratory comparison, with no pass/fail verdict. The human dataset also reports no ABR thresholds — its audiometric measures are behavioural pure-tone averages in dB HL, which are not comparable with a simulated ABR threshold in dB SPL — so its threshold row reads "not measured" rather than being filled in from a different quantity.
 
