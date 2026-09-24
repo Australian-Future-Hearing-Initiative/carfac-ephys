@@ -27,6 +27,7 @@ import csv
 import dataclasses
 import importlib.resources
 import json
+import math
 import pathlib
 from collections.abc import Sequence
 
@@ -389,6 +390,26 @@ def _resolve_comparison_label(files: SpeciesDataFiles, comparison_group: str | N
   return comparison_group
 
 
+def _validated_entry(entry: dict, group: str, measure: str) -> tuple[float, float, int]:
+  """Returns (mean, std, n) from one summary entry, rejecting unusable statistics."""
+  label = f"Group '{group}', measure '{measure}'"
+  try:
+    mean = float(entry["mean"])
+    std = float(entry["std"])
+    count = entry["n"]
+  except (KeyError, TypeError, ValueError) as error:
+    raise ValueError(f"{label}: malformed entry ({error}).") from error
+  if not math.isfinite(mean) or not math.isfinite(std):
+    raise ValueError(f"{label}: mean and SD must be finite, got mean={mean}, std={std}.")
+  if std < 0.0:
+    raise ValueError(f"{label}: SD must not be negative, got {std}.")
+  if isinstance(count, bool) or not isinstance(count, int):
+    raise ValueError(f"{label}: n must be an integer, got {count!r}.")
+  if count < 1:
+    raise ValueError(f"{label}: n must be positive, got {count}.")
+  return mean, std, count
+
+
 def _group_stat(
   summary: dict,
   measure: str,
@@ -403,15 +424,19 @@ def _group_stat(
       raise ValueError(f"Summary has no '{group}' group; found {sorted(groups)}.")
     if measure not in groups[group]:
       raise ValueError(f"Group '{group}' has no '{measure}' measure.")
-  baseline = groups[baseline_group][measure]
-  comparison = groups[comparison_group][measure]
+  baseline_mean, baseline_std, baseline_n = _validated_entry(
+    groups[baseline_group][measure], baseline_group, measure
+  )
+  comparison_mean, comparison_std, comparison_n = _validated_entry(
+    groups[comparison_group][measure], comparison_group, measure
+  )
   return GroupComparisonStat(
-    mean_baseline=float(baseline["mean"]),
-    mean_comparison=float(comparison["mean"]),
-    std_baseline=float(baseline["std"]),
-    std_comparison=float(comparison["std"]),
-    n_baseline=int(baseline["n"]),
-    n_comparison=int(comparison["n"]),
+    mean_baseline=baseline_mean,
+    mean_comparison=comparison_mean,
+    std_baseline=baseline_std,
+    std_comparison=comparison_std,
+    n_baseline=baseline_n,
+    n_comparison=comparison_n,
     units=units,
   )
 
