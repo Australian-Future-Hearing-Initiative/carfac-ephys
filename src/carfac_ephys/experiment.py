@@ -853,11 +853,15 @@ def format_empirical_comparison_table(comparison: EmpiricalComparison) -> str:
     format_value(comparison.reference_threshold_shift_db, "+.2f", "not measured"),
   ]
   ratio_row = [
-    f"Suprathreshold Wave-I ratio ({CALIBRATION_LEVEL_DB:g} dB SPL)",
+    "Suprathreshold Wave-I ratio",
     format_value(comparison.simulated_w1_ratio, ".3f"),
     format(comparison.reference_w1_ratio, ".3f"),
   ]
-  headers = ["Metric", f"Simulated ({comparison.condition})", f"Measured ({reference_label})"]
+  headers = [
+    "Metric",
+    f"Simulated ({comparison.condition}, {CALIBRATION_LEVEL_DB:g} dB SPL)",
+    f"Measured ({reference_label})",
+  ]
 
   if comparison.validated:
     headers += ["Tolerance", "Status"]
@@ -967,7 +971,7 @@ def plot_empirical_comparison(
     reference_label=reference_label,
     tolerance=W1_RATIO_TOLERANCE if comparison.validated else None,
     ylabel="Wave-I Amplitude Ratio",
-    title=f"Suprathreshold Wave-I ({CALIBRATION_LEVEL_DB:g} dB SPL)",
+    title=f"Suprathreshold Wave-I ratio (simulated at {CALIBRATION_LEVEL_DB:g} dB SPL)",
   )
 
   # Per-subject points exist only where subjects were measured twice.
