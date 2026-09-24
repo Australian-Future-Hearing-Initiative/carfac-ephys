@@ -1,22 +1,12 @@
-"""Regenerates `data/human_abr_summary.json` from `Human_Synaptopathy_ABRdata.csv`.
+"""Regenerates `data/human_abr_summary.json` from the private human ABR source CSV.
 
-The human dataset is an independent-groups design: three separate groups of
-listeners (`ctrl`, `nexp`, `ma`), each measured once. That is a different shape
-from the chinchilla noise-exposure study, which measures the same animal before
-and after exposure, so the summary written here reports one statistics block
-per group rather than a paired pre/post series.
+The source CSV holds individual-level recordings and is never committed. Keep
+   your copy in `data/private/`, which Git ignores, or point `--csv` anywhere else.
+   Only the aggregate summary in `src/carfac_ephys/data/` is tracked.
 
-Every measure carries its own units and its own valid-n, because the units are
-not interchangeable:
-
-- `wave1_uv` / `wave5_uv` are click ABR wave amplitudes in microvolts.
-- `audiometric_*_db_hl` are behavioural pure-tone averages in dB HL. They are
-  NOT ABR thresholds and are not comparable with a simulated ABR threshold in
-  dB SPL, so they are reported as listener context only and are deliberately
-  kept out of any threshold-shift comparison.
-
-Run from the repository root:
-    uv run python scripts/generate_human_abr_summary.py
+   Run from the repository root:
+       uv run python scripts/generate_human_abr_summary.py
+       uv run python scripts/generate_human_abr_summary.py --csv /path/to/source.csv
 """
 
 import argparse
@@ -33,12 +23,8 @@ DATA_DIR = REPO_ROOT / "src" / "carfac_ephys" / "data"
 DEFAULT_INPUT_CSV = REPO_ROOT / "data" / "private" / "Human_Synaptopathy_ABRdata.csv"
 DEFAULT_OUTPUT_JSON = DATA_DIR / "human_abr_summary.json"
 
-# TODO(ben): confirm the citation for this dataset before merging, and confirm
-# that redistributing the individual-level CSV in a public repository is
-# permitted. It is NOT Bharadwaj et al. (2022) — that paper's design is the
-# repeated-measures chinchilla protocol, not this ctrl/nexp/ma grouping.
 SOURCE_CITATION = (
-  "TODO: confirm citation and redistribution permission for Human_Synaptopathy_ABRdata.csv"
+  "INSERT CITATION HERE for the human ABR dataset"
 )
 
 GROUP_COLUMN = "Group"
