@@ -80,11 +80,16 @@ def build_summary(csv_path: pathlib.Path = DEFAULT_INPUT_CSV) -> dict:
   if not rows:
     raise ValueError(f"No rows found in {csv_path}.")
 
-  rows_by_group: dict[str, list[dict[str, str]]] = defaultdict(list)
-  for row in rows:
-    rows_by_group[row[GROUP_COLUMN].strip()].append(row)
-
   expected_groups = (BASELINE_GROUP, *COMPARISON_GROUPS)
+  rows_by_group: dict[str, list[dict[str, str]]] = defaultdict(list)
+  for line_number, row in enumerate(rows, start=2):  # line 1 is the header
+    label = row[GROUP_COLUMN].strip()
+    if label not in expected_groups:
+      raise ValueError(
+        f"{csv_path} line {line_number}: unexpected group '{label}'; "
+        f"expected one of {list(expected_groups)}."
+      )
+    rows_by_group[label].append(row)
   missing = [group for group in expected_groups if group not in rows_by_group]
   if missing:
     raise ValueError(f"{csv_path} is missing group(s) {missing}; found {sorted(rows_by_group)}.")
