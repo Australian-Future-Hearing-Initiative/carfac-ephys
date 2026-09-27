@@ -465,15 +465,15 @@ class TestSummaryValidation:
     assert "nexp" in str(error.value)
     assert "wave1_uv" in str(error.value)
 
-  @pytest.mark.parametrize("units", ["mV", "", None], ids=["millivolts", "empty", "missing"])
-  def test_wave_amplitudes_must_declare_microvolts(self, tmp_path, units):
+  @pytest.mark.parametrize("units", ["", None], ids=["empty", "missing"])
+  def test_context_measures_must_declare_units(self, tmp_path, units):
     summary = _minimal_grouped_summary()
     if units is None:
-      del summary["measures"]["wave1_uv"]["units"]
+      del summary["measures"]["audiometric_lfa_db_hl"]["units"]
     else:
-      summary["measures"]["wave1_uv"]["units"] = units
+      summary["measures"]["audiometric_lfa_db_hl"]["units"] = units
     _write_grouped_dataset(tmp_path, summary)
-    with pytest.raises(ValueError, match="wave amplitudes must be"):
+    with pytest.raises(ValueError, match="declares no units"):
       load_abr_dataset("human", tmp_path)
 
   def test_audiometry_keeps_its_own_units(self, tmp_path):

@@ -517,11 +517,19 @@ def _load_independent_groups_dataset(
     )
   measures = summary.get("measures", {})
 
-  def units_for(measure: str) -> str:
+  def declared_units(measure: str) -> str:
     return str(measures.get(measure, {}).get("units", ""))
 
+  def context_units_for(measure: str) -> str:
+    units = declared_units(measure)
+    if not units:
+      raise ValueError(
+        f"Measure '{measure}' declares no units; every context measure must carry its own units."
+      )
+    return units
+
   def wave_units_for(measure: str) -> str:
-    units = units_for(measure)
+    units = declared_units(measure)
     if units not in WAVE_AMPLITUDE_UNITS:
       raise ValueError(
         f"Measure '{measure}' declares units {units!r}; wave amplitudes must be "
@@ -541,7 +549,9 @@ def _load_independent_groups_dataset(
   # Everything that is not an ABR wave amplitude is context, carried with its
   # own units so it cannot be mistaken for a threshold in dB SPL.
   context = {
-    measure: _group_stat(summary, measure, baseline_group, comparison_label, units_for(measure))
+    measure: _group_stat(
+      summary, measure, baseline_group, comparison_label, context_units_for(measure)
+    )
     for measure in measures
     if measure not in ("wave1_uv", "wave5_uv")
   }
