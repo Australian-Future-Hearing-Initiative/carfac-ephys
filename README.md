@@ -156,6 +156,10 @@ cd carfac-ephys
 uv sync
 ```
 
+Store private research inputs in `data/private/`, which Git ignores. The human
+summary generator reads its default input there. Commit only data approved for
+redistribution.
+
 ### 2. Run Automated Test Suite
 
 Verify all 144 unit and integration tests:
