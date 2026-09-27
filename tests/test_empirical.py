@@ -488,3 +488,11 @@ class TestSummaryValidation:
     monkeypatch.setitem(SPECIES_DATA_FILES, "human", typo)
     with pytest.raises(ValueError, match="unsupported design"):
       load_abr_dataset("human", tmp_path)
+
+  def test_summary_baseline_must_match_the_dataset_definition(self, tmp_path):
+    # A summary that renames the baseline would otherwise compare a group with itself.
+    summary = _minimal_grouped_summary()
+    summary["baseline_group"] = "nexp"
+    _write_grouped_dataset(tmp_path, summary)
+    with pytest.raises(ValueError, match="declares baseline group"):
+      load_abr_dataset("human", tmp_path, comparison_group="nexp")

@@ -508,7 +508,13 @@ def _load_independent_groups_dataset(
   condition, so a per-subject ratio does not exist and the per-subject file
   adds nothing the group statistics do not already carry.
   """
-  baseline_group = str(summary.get("baseline_group", files.baseline_label))
+  baseline_group = files.baseline_label
+  declared = summary.get("baseline_group")
+  if declared is not None and str(declared) != baseline_group:
+    raise ValueError(
+      f"'{species}' declares baseline group '{baseline_group}', but its summary "
+      f"declares '{declared}'."
+    )
   measures = summary.get("measures", {})
 
   def units_for(measure: str) -> str:
