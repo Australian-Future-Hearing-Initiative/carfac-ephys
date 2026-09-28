@@ -20,3 +20,6 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Private research inputs
+/data/private/
