@@ -24,7 +24,7 @@ DATA_DIR = REPO_ROOT / "src" / "carfac_ephys" / "data"
 DEFAULT_INPUT_CSV = REPO_ROOT / "data" / "private" / "Human_Synaptopathy_ABRdata.csv"
 DEFAULT_OUTPUT_JSON = DATA_DIR / "human_abr_summary.json"
 
-SOURCE_CITATION = "INSERT YOUR CITATION HERE for the human ABR dataset (default data from Bharadwaj et al. 2022 Comm. Biol https://doi.org/10.1038/s42003-022-03691-4)"
+SOURCE_CITATION = "Bharadwaj, H.M., Hustedt-Mai, A.R., Ginsberg, H.M. et al. Cross-species experiments reveal widespread cochlear neural damage in normal hearing. Commun Biol 5, 733 (2022). https://doi.org/10.1038/s42003-022-03691-4"
 
 GROUP_COLUMN = "Group"
 BASELINE_GROUP = "ctrl"
