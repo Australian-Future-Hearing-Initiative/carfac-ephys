@@ -245,8 +245,8 @@ class AbrDataset:
     For a frequency-resolved dataset this is the click condition; otherwise it
     is the headline group mean.
     """
-    if self.frequency_wave1_uv is not None and CLICK_FREQUENCY_HZ in self.frequency_wave1_uv:
-      return self.frequency_wave1_uv[CLICK_FREQUENCY_HZ].mean_baseline
+    if self.frequency_wave1_uv is not None:
+      return _lookup_frequency(self.frequency_wave1_uv, CLICK_FREQUENCY_HZ).mean_baseline
     return self.wave1_uv.mean_baseline
 
   @property
@@ -257,8 +257,8 @@ class AbrDataset:
     ratio of group means otherwise. Kept distinct from `ratio_of_mean_w1`,
     which is always the tone-average/group-level quantity.
     """
-    if self.frequency_wave1_uv is not None and CLICK_FREQUENCY_HZ in self.frequency_wave1_uv:
-      return self.frequency_wave1_uv[CLICK_FREQUENCY_HZ].ratio_of_means
+    if self.frequency_wave1_uv is not None:
+      return _lookup_frequency(self.frequency_wave1_uv, CLICK_FREQUENCY_HZ).ratio_of_means
     return self.ratio_of_mean_w1
 
   @property

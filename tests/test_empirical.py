@@ -505,6 +505,34 @@ class TestSummaryValidation:
     with pytest.raises(ValueError, match="declares no units"):
       load_abr_dataset("human", tmp_path)
 
+  @pytest.mark.parametrize(
+    "attribute", ["baseline_reference_w1_uv", "reference_w1_ratio"], ids=["calibration", "ratio"]
+  )
+  def test_frequency_resolved_dataset_requires_a_click_entry(self, tmp_path, attribute):
+    # A frequency-resolved summary without a click must raise rather than fall
+    # back to the tone average, which is a different quantity.
+    waves = {
+      "mean_pre": [1.0, 4.0],
+      "mean_post": [0.5, 2.0],
+      "std_pre": [0.1, 0.4],
+      "std_post": [0.05, 0.2],
+    }
+    summary = _minimal_paired_summary()
+    summary["frequencies_hz"] = [4000]
+    summary["thresholds_db_spl"] = {
+      "mean_pre": [20.0],
+      "mean_post": [25.0],
+      "std_pre": [2.0],
+      "std_post": [2.5],
+    }
+    summary["high_level_w1_uv"] = dict(waves)
+    summary["high_level_w5_uv"] = dict(waves)
+    _write_paired_dataset(tmp_path, summary, ["A1,pre,2.0,4.0", "A1,2wk,1.0,2.0"])
+
+    dataset = load_abr_dataset("chinchilla", tmp_path)
+    with pytest.raises(KeyError, match="No data for 0.0 Hz"):
+      getattr(dataset, attribute)
+
   def test_audiometry_keeps_its_own_units(self, tmp_path):
     # dB HL context must not be forced into the wave-amplitude unit set.
     _write_grouped_dataset(tmp_path, _minimal_grouped_summary())
