@@ -123,6 +123,23 @@ class GroupComparisonStat:
   n_comparison: int | None = None
   units: str = ""
 
+  def __post_init__(self) -> None:
+    """Rejects statistics that cannot describe a real measurement."""
+    for name in ("mean_baseline", "mean_comparison", "std_baseline", "std_comparison"):
+      value = getattr(self, name)
+      if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite, got {value}.")
+      if name.startswith("std_") and value < 0.0:
+        raise ValueError(f"{name} must not be negative, got {value}.")
+    for name in ("n_baseline", "n_comparison"):
+      count = getattr(self, name)
+      if count is None:
+        continue
+      if isinstance(count, bool) or not isinstance(count, int):
+        raise ValueError(f"{name} must be an integer, got {count!r}.")
+      if count < 1:
+        raise ValueError(f"{name} must be positive, got {count}.")
+
   @property
   def difference(self) -> float:
     """Comparison minus baseline difference of the group means."""
@@ -323,13 +340,16 @@ def _build_frequency_stats(
     )
 
   def stat_at(index: int) -> GroupComparisonStat:
-    return GroupComparisonStat(
-      mean_baseline=float(block["mean_pre"][index]),
-      mean_comparison=float(block["mean_post"][index]),
-      std_baseline=float(block["std_pre"][index]),
-      std_comparison=float(block["std_post"][index]),
-      units=units,
-    )
+    try:
+      return GroupComparisonStat(
+        mean_baseline=float(block["mean_pre"][index]),
+        mean_comparison=float(block["mean_post"][index]),
+        std_baseline=float(block["std_pre"][index]),
+        std_comparison=float(block["std_post"][index]),
+        units=units,
+      )
+    except ValueError as error:
+      raise ValueError(f"Block '{block_name}', entry {index}: {error}") from error
 
   stats = {float(frequency): stat_at(index) for index, frequency in enumerate(frequencies_hz)}
   aggregate = stat_at(-1) if n_entries == n_frequencies + 1 else None
@@ -397,7 +417,12 @@ def _resolve_comparison_label(files: SpeciesDataFiles, comparison_group: str | N
 
 
 def _validated_entry(entry: dict, group: str, measure: str) -> tuple[float, float, int]:
-  """Returns (mean, std, n) from one summary entry, rejecting unusable statistics."""
+  """Returns (mean, std, n) from one summary entry, rejecting malformed shapes.
+
+  Numeric validation lives in `GroupComparisonStat.__post_init__` so that every
+  design is checked, not only the grouped one. This function only extracts the
+  fields and reports a readable error when they are absent or unconvertible.
+  """
   label = f"Group '{group}', measure '{measure}'"
   try:
     mean = float(entry["mean"])
@@ -405,14 +430,6 @@ def _validated_entry(entry: dict, group: str, measure: str) -> tuple[float, floa
     count = entry["n"]
   except (KeyError, TypeError, ValueError) as error:
     raise ValueError(f"{label}: malformed entry ({error}).") from error
-  if not math.isfinite(mean) or not math.isfinite(std):
-    raise ValueError(f"{label}: mean and SD must be finite, got mean={mean}, std={std}.")
-  if std < 0.0:
-    raise ValueError(f"{label}: SD must not be negative, got {std}.")
-  if isinstance(count, bool) or not isinstance(count, int):
-    raise ValueError(f"{label}: n must be an integer, got {count!r}.")
-  if count < 1:
-    raise ValueError(f"{label}: n must be positive, got {count}.")
   return mean, std, count
 
 
@@ -436,15 +453,20 @@ def _group_stat(
   comparison_mean, comparison_std, comparison_n = _validated_entry(
     groups[comparison_group][measure], comparison_group, measure
   )
-  return GroupComparisonStat(
-    mean_baseline=baseline_mean,
-    mean_comparison=comparison_mean,
-    std_baseline=baseline_std,
-    std_comparison=comparison_std,
-    n_baseline=baseline_n,
-    n_comparison=comparison_n,
-    units=units,
-  )
+  try:
+    return GroupComparisonStat(
+      mean_baseline=baseline_mean,
+      mean_comparison=comparison_mean,
+      std_baseline=baseline_std,
+      std_comparison=comparison_std,
+      n_baseline=baseline_n,
+      n_comparison=comparison_n,
+      units=units,
+    )
+  except ValueError as error:
+    raise ValueError(
+      f"Group '{baseline_group}'/'{comparison_group}', measure '{measure}': {error}"
+    ) from error
 
 
 def _load_paired_dataset(
