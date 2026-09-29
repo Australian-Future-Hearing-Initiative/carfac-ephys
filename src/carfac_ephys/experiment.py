@@ -957,7 +957,8 @@ def plot_empirical_comparison(
   reference_threshold_db = comparison.reference_threshold_shift_db
 
   n_panels = 2 if reference_threshold_db is not None else 1
-  fig, axes = plt.subplots(1, n_panels, figsize=(4.5 * n_panels, 4.5), dpi=300, squeeze=False)
+  panel_width = 6.0 if n_panels == 1 else 4.5 * n_panels
+  fig, axes = plt.subplots(1, n_panels, figsize=(panel_width, 4.5), dpi=300, squeeze=False)
   panels = list(axes[0])
 
   if reference_threshold_db is not None:
@@ -978,7 +979,7 @@ def plot_empirical_comparison(
     reference_label=reference_label,
     tolerance=W1_RATIO_TOLERANCE if comparison.validated else None,
     ylabel="Wave-I Amplitude Ratio",
-    title=f"Suprathreshold Wave-I ratio (simulated at {CALIBRATION_LEVEL_DB:g} dB SPL)",
+    title=f"Suprathreshold Wave-I ratio\n(simulated at {CALIBRATION_LEVEL_DB:g} dB SPL)",
   )
 
   # Per-subject points exist only where subjects were measured twice.
