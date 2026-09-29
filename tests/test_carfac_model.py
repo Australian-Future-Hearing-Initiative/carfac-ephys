@@ -310,3 +310,31 @@ class TestPackageExports:
     assert hasattr(carfac_ephys, "CarfacModel")
     assert hasattr(carfac_ephys, "FiberRetention")
     assert hasattr(carfac_ephys, "build_model")
+
+  def test_run_segment_returns_naps_and_bm(self):
+    model = build_model()
+    waveform = np.zeros(256, dtype=np.float32)
+    waveform[16] = 0.5
+    response = model.run_segment(waveform)
+
+    assert response.naps.shape == response.bm.shape
+    assert response.naps.shape[1] == model.n_channels
+    assert np.isfinite(response.bm).all()
+    # A click must actually move the membrane.
+    assert np.abs(response.bm).max() > 0.0
+
+  def test_run_returns_the_same_naps_as_run_segment(self):
+    model = build_model()
+    waveform = np.zeros(256, dtype=np.float32)
+    waveform[16] = 0.5
+
+    from_segment = model.run_segment(waveform).naps
+    model.reset()
+    assert np.array_equal(model.run(waveform), from_segment)
+
+  def test_run_segment_zero_sample_waveform(self):
+    model = build_model()
+    response = model.run_segment(np.zeros(0, dtype=np.float32))
+
+    assert response.naps.shape == (0, model.n_channels)
+    assert response.bm.shape == (0, model.n_channels)
