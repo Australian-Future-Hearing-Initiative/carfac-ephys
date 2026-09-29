@@ -860,13 +860,13 @@ def format_empirical_comparison_table(comparison: EmpiricalComparison) -> str:
     format_value(comparison.reference_threshold_shift_db, "+.2f", "not measured"),
   ]
   ratio_row = [
-    "Suprathreshold Wave-I ratio",
+    f"Suprathreshold Wave-I ratio (simulated at {CALIBRATION_LEVEL_DB:g} dB SPL)",
     format_value(comparison.simulated_w1_ratio, ".3f"),
     format(comparison.reference_w1_ratio, ".3f"),
   ]
   headers = [
     "Metric",
-    f"Simulated ({comparison.condition}, {CALIBRATION_LEVEL_DB:g} dB SPL)",
+    f"Simulated ({comparison.condition})",
     f"Measured ({reference_label})",
   ]
 
