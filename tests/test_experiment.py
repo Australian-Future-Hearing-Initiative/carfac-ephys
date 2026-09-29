@@ -311,6 +311,27 @@ class TestCli:
     assert "OHC Loss Threshold Shift (30-50 dB SPL)**: SKIPPED" in report
     assert "FAILED" not in report
 
+  def test_unknown_comparison_group_is_a_usage_error(self):
+    result = CliRunner().invoke(
+      main, ["--species", "chinchilla", "--comparison-group", "ma", "--no-plot"]
+    )
+    assert result.exit_code == 2
+    assert "Traceback" not in result.output
+    assert "--comparison-group" in result.output
+
+  def test_comparison_group_is_case_insensitive(self):
+    result = CliRunner().invoke(
+      main, ["--species", "human", "--comparison-group", "NEXP", "--quick", "--no-plot"]
+    )
+    assert result.exit_code == 0
+
+  def test_help_lists_every_comparison_group(self):
+    result = CliRunner().invoke(main, ["--help"])
+    assert result.exit_code == 0
+    assert "2wk" in result.output
+    assert "nexp" in result.output
+    assert "ma" in result.output
+
 
 class TestMarkdownTableFormatter:
   """Tests for format_markdown_table."""

@@ -7,6 +7,18 @@ import click
 from carfac_ephys import electrophysiology, empirical, experiment
 
 
+def _comparison_group_help() -> str:
+  """Builds the help text from the datasets themselves, so it cannot drift."""
+  options = "; ".join(
+    f"{species}: {', '.join(repr(label) for label in files.comparison_labels)}"
+    for species, files in sorted(empirical.SPECIES_DATA_FILES.items())
+  )
+  return (
+    f"Condition to compare against the dataset's baseline ({options}). "
+    "Defaults to the dataset's first comparison group."
+  )
+
+
 @click.command(name="carfac-ephys-simulate")
 @click.option(
   "--species",
@@ -18,10 +30,7 @@ from carfac_ephys import electrophysiology, empirical, experiment
 @click.option(
   "--comparison-group",
   default=None,
-  help=(
-    "Condition to compare against the dataset's baseline "
-    "(human: 'nexp' or 'ma'). Defaults to the dataset's first comparison group."
-  ),
+  help=_comparison_group_help(),
 )
 @click.option(
   "--output-dir",
@@ -51,7 +60,13 @@ def main(
   """Runs CARFAC cochlear impairment electrophysiology cohort simulations."""
   # Load the dataset once, so every section below reports the same comparison
   # instead of each re-resolving its own default.
-  dataset = empirical.load_abr_dataset(species.lower(), comparison_group=comparison_group)
+  try:
+    dataset = empirical.load_abr_dataset(
+      species.lower(),
+      comparison_group=None if comparison_group is None else comparison_group.lower(),
+    )
+  except (KeyError, ValueError) as error:
+    raise click.BadParameter(str(error), param_hint="--comparison-group") from error
   slug = experiment.dataset_slug(dataset)
   click.echo(f"Dataset: {dataset.species} ({dataset.comparison_group} vs {dataset.baseline_label})")
 
