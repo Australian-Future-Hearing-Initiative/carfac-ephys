@@ -731,3 +731,15 @@ class TestCompareToEmpirical:
     )
     with pytest.raises(ValueError, match="but the comparison describes"):
       plot_empirical_comparison(human, tmp_path / "mismatch.png", dataset=load_abr_dataset())
+
+  def test_calibration_level_labels_the_ratio_row_only(self):
+    # 80 dB SPL describes the Wave-I ratio, not the threshold shift, so it must
+    # not sit in a column header that spans both rows.
+    table = format_empirical_comparison_table(
+      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS)
+    )
+    header_line, _separator, threshold_line, ratio_line = table.splitlines()[:4]
+
+    assert "dB SPL" not in header_line
+    assert "dB SPL" not in threshold_line
+    assert "80 dB SPL" in ratio_line
