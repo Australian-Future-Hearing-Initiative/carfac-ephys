@@ -183,7 +183,13 @@ This will:
 
 #### Choosing the Empirical Dataset
 
-`--species` selects which **empirical reference** the simulation is compared against. It does not change the simulation: the cohorts and every model parameter stay exactly the same, so `--species human` produces an exploratory comparison against human data rather than switching to a human-specific model. `--comparison-group` selects which condition within that dataset is compared to its baseline:
+`--species` selects which **empirical reference** the simulation is compared against. The
+simulation itself is not re-run: the cohorts and every model parameter stay exactly the same, and
+the underlying Wave-I responses in model units are identical. What does change is the calibration —
+the µV-per-AU scale factor is fitted to the chosen dataset's baseline amplitude (≈0.0316 µV/AU
+against chinchilla `pre`, ≈0.0172 against human `ctrl`) — so any quantity reported in microvolts,
+or in dB derived from them, moves with that choice. `--species human` therefore produces an
+exploratory comparison against human data, not a switch to a human-specific model.
 
 ```bash
 uv run carfac-ephys-simulate --species human --comparison-group ma --output-dir output/
