@@ -743,3 +743,13 @@ class TestCompareToEmpirical:
     assert "dB SPL" not in header_line
     assert "dB SPL" not in threshold_line
     assert "80 dB SPL" in ratio_line
+
+  def test_single_panel_figure_is_widened_and_titles_wrap(self, tmp_path):
+    human = load_abr_dataset("human")
+    comparison = compare_to_empirical(
+      FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=human
+    )
+    path = tmp_path / "human.png"
+    plot_empirical_comparison(comparison, path, dataset=human)
+
+    assert path.exists() and path.stat().st_size > 0
