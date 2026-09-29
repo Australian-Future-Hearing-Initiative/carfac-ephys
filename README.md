@@ -204,6 +204,19 @@ Running a human comparison needs nothing beyond the packaged aggregate summary; 
 
 The cohorts are tuned to the chinchilla data, so only that comparison is scored against tolerances. Against the human dataset the simulated and measured values are reported side by side as an exploratory comparison, with no pass/fail verdict. The human dataset also reports no ABR thresholds — its audiometric measures are behavioural pure-tone averages in dB HL, which are not comparable with a simulated ABR threshold in dB SPL — so its threshold row reads "not measured" rather than being filled in from a different quantity.
 
+The human groups differ in the origin of the hearing loss, not only its degree:
+
+| Human group | Listeners | Origin of hearing loss |
+| :--- | :--- | :--- |
+| `ctrl` | Control | Baseline group |
+| `nexp` | Noise-exposed | Acoustic overexposure — the human analogue of the noise-exposed chinchillas the cohorts are tuned against |
+| `ma` | Mature | Presbyacusis: age-related, arising from a different mechanism than noise damage |
+
+`--comparison-group ma` is therefore not a second replicate of the noise-exposure result; the
+cohorts model selective synaptopathy from overexposure, so `nexp` is the comparison they were
+built for and `ma` asks a different question of the same simulation.
+
+
 #### Fast Smoke Test
 To verify the pipeline on a reduced 2-level subset:
 ```bash
