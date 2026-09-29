@@ -514,7 +514,7 @@ class TestGenerateSimulationReport:
     assert "Bharadwaj" in content
     assert "Synaptopathy-50" in content
     assert "Suprathreshold Wave-I Attenuation**: PASSED" in content
-    assert "## 5. Empirical Comparison with Animal Data" in content
+    assert "## 5. Empirical Comparison" in content
     assert "Measured (chinchilla (2wk))" in content
     assert "empirical_comparison_chinchilla.png" in content
     assert "ABR Wave-I Onset Amplitude (AU)" in content
@@ -753,3 +753,39 @@ class TestCompareToEmpirical:
     plot_empirical_comparison(comparison, path, dataset=human)
 
     assert path.exists() and path.stat().st_size > 0
+
+  def test_human_report_does_not_claim_chinchilla_provenance(self):
+    # Every other report test uses the default dataset, which is how the
+    # hardcoded chinchilla paragraph survived above a human table.
+    click_levels = [40.0, 80.0]
+    abr_results = {
+      "Control": [0.1282, 67.5298],
+      "Synaptopathy-50": [0.0760, 35.5266],
+      "Synaptopathy-25": [0.0414, 18.2008],
+      "Selective-Synaptopathy": [0.1238, 46.6437],
+      "OHC-Loss": [0.0025, 0.8301],
+      "Mixed-Loss": [0.0012, 0.4261],
+    }
+    efr_levels = [40.0, 60.0, 80.0]
+    efr_results = {
+      "Control": [1.0298, 2.4846, 5.8168],
+      "Synaptopathy-50": [0.6961, 1.4827, 2.8883],
+      "Synaptopathy-25": [0.3820, 0.6988, 1.9063],
+      "Selective-Synaptopathy": [0.9641, 1.8917, 4.6401],
+      "OHC-Loss": [0.0036, 0.3421, 4.7608],
+      "Mixed-Loss": [0.0022, 0.2073, 2.5421],
+    }
+
+    content = generate_simulation_report(
+      click_levels_db=click_levels,
+      abr_results=abr_results,
+      efr_levels_db=efr_levels,
+      efr_results=efr_results,
+      dataset=load_abr_dataset("human"),
+    )
+
+    assert "Bharadwaj" not in content
+    assert "chinchillas" not in content
+    assert "Measured (human (nexp))" in content
+    assert "exploratory comparison" in content
+    assert "empirical_comparison_human_nexp.png" in content
