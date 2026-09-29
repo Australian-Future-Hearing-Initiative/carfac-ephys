@@ -1149,6 +1149,28 @@ def format_calibration_line(
   )
 
 
+def _empirical_comparison_preamble(
+  data: empirical.AbrDataset, comparison: EmpiricalComparison
+) -> list[str]:
+  """Describes the dataset this report was actually compared against."""
+  criterion = (
+    f"Simulated thresholds are the {THRESHOLD_CRITERION_UV:g} uV crossing of the interpolated "
+    "Wave-I growth function, converted through the fitted response scale."
+  )
+  if data.species == VALIDATION_REFERENCE_SPECIES:
+    return [
+      f"The {comparison.condition} cohort stands in for the noise-exposed chinchillas of",
+      "Bharadwaj et al. (2022), which recovered their click thresholds while retaining a",
+      f"reduced suprathreshold Wave-I. {criterion}",
+    ]
+  return [
+    f"The {comparison.condition} cohort is compared against the {data.species} dataset",
+    f"({data.comparison_group} versus {data.baseline_label}). The cohorts are tuned to the",
+    f"{VALIDATION_REFERENCE_SPECIES} data, so this is an exploratory comparison and carries no",
+    f"pass/fail verdict. {criterion}",
+  ]
+
+
 def generate_simulation_report(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
@@ -1266,13 +1288,9 @@ def generate_simulation_report(
     "",
     f"**Overall Biological Verification**: {format_overall_verdict(validation)}",
     "",
-    "## 5. Empirical Comparison with Animal Data",
+    "## 5. Empirical Comparison",
     "",
-    f"The {comparison.condition} cohort stands in for the noise-exposed chinchillas of",
-    "Bharadwaj et al. (2022), which recovered their click thresholds while retaining a",
-    f"reduced suprathreshold Wave-I. Simulated thresholds are the {THRESHOLD_CRITERION_UV:g} uV crossing of",
-    "the interpolated Wave-I growth function, converted through the fitted response scale.",
-    "",
+    *_empirical_comparison_preamble(data, comparison),
     empirical_md,
     "",
     "## 6. Diagnostic Figures",
