@@ -649,9 +649,11 @@ class TestCompareToEmpirical:
     assert comparison.threshold_shift_matched is None
     assert comparison.w1_ratio_matched is None
 
-    # Human data carries no ABR thresholds, so no threshold shift is claimed,
-    # but the Wave-I ratio is still comparable.
+    # Human data carries no ABR thresholds, so neither side of the threshold row
+    # is claimed: the simulated value is calibration-dependent and would invite a
+    # comparison that cannot be made.
     assert comparison.reference_threshold_shift_db is None
+    assert comparison.simulated_threshold_shift_db is None
     assert comparison.reference_w1_ratio == pytest.approx(human.ratio_of_mean_w1)
     assert comparison.simulated_w1_ratio is not None
 
