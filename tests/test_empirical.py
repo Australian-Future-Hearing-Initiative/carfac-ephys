@@ -465,6 +465,24 @@ class TestSummaryValidation:
     assert "nexp" in str(error.value)
     assert "wave1_uv" in str(error.value)
 
+  @pytest.mark.parametrize(
+    ("series", "values", "message"),
+    [
+      ("mean_post", [float("nan"), 0.5, 2.0], "must be finite"),
+      ("mean_pre", [float("inf"), 1.0, 4.0], "must be finite"),
+      ("std_post", [-0.5, 0.05, 0.2], "must not be negative"),
+    ],
+    ids=["nan-mean", "inf-mean", "negative-sd"],
+  )
+  def test_malformed_paired_statistics_are_rejected(self, tmp_path, series, values, message):
+    # The paired design must be validated too, not only independent groups.
+    # This summary is frequency-resolved, so the corruption goes in the click entry.
+    summary = _minimal_paired_summary()
+    summary["high_level_w1_uv"][series] = values
+    _write_paired_dataset(tmp_path, summary, ["A1,pre,2.0,4.0", "A1,2wk,1.0,2.0"])
+    with pytest.raises(ValueError, match=message):
+      load_abr_dataset("chinchilla", tmp_path)
+
   @pytest.mark.parametrize("units", ["mV", "", None], ids=["millivolts", "empty", "missing"])
   def test_wave_amplitudes_must_declare_microvolts(self, tmp_path, units):
     summary = _minimal_grouped_summary()
