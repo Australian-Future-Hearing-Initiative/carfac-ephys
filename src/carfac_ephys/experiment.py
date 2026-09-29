@@ -14,6 +14,19 @@ import numpy as np
 from carfac_ephys import carfac_model, constants, electrophysiology, empirical, stimuli
 
 
+class AbrLevelSeries(NamedTuple):
+  """Wave-I amplitudes and basilar membrane motion from one click level sweep.
+
+  Attributes:
+    wave1_au: Condition name to Wave-I onset amplitudes, one per level.
+    bm: Condition name to basilar membrane motion, one array per level, each
+      of shape (samples, n_channels).
+  """
+
+  wave1_au: dict[str, list[float]]
+  bm: dict[str, list[np.ndarray]]
+
+
 class CohortCondition(NamedTuple):
   """Parameters defining a cohort biophysical condition."""
 
@@ -183,7 +196,7 @@ def _resolve_cohort(
   return Cohort(cohort)
 
 
-def simulate_abr_level_series(
+def simulate_abr_level_series_with_bm(
   cohort: Cohort | Mapping[str, Any] | Sequence[CohortCondition] | None = None,
   click_levels_db: Sequence[float] = DEFAULT_CLICK_LEVELS_DB,
   sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
@@ -192,7 +205,7 @@ def simulate_abr_level_series(
   delay_s: float = 0.005,
   window_s: float = 0.008,
   mode: str = "baseline_to_peak",
-) -> dict[str, list[float]]:
+) -> AbrLevelSeries:
   """Runs ABR Wave-I click level series across cohort conditions.
 
   Args:
@@ -206,7 +219,8 @@ def simulate_abr_level_series(
     mode: Wave-I extraction mode ('baseline_to_peak' or 'peak_to_trough').
 
   Returns:
-    Dictionary mapping condition name to list of Wave-I onset amplitudes, in arbitrary units.
+    AbrLevelSeries carrying Wave-I onset amplitudes in arbitrary units, one per
+    level per condition, and the basilar membrane motion for each of those runs.
   """
   # Validate input parameters.
   if sample_rate <= 0:
@@ -217,6 +231,7 @@ def simulate_abr_level_series(
   # Resolve cohort specifications.
   resolved_cohort = _resolve_cohort(cohort)
   results: dict[str, list[float]] = {}
+  bm_results: dict[str, list[np.ndarray]] = {}
 
   # Iterate through each condition.
   for condition in resolved_cohort.values():
@@ -226,6 +241,7 @@ def simulate_abr_level_series(
       fs=sample_rate,
     )
     amps: list[float] = []
+    bm_by_level: list[np.ndarray] = []
 
     # Run level sweep.
     for level in click_levels_db:
@@ -237,8 +253,8 @@ def simulate_abr_level_series(
         pulse_width_s=pulse_width_s,
         delay_s=delay_s,
       )
-      naps = model.run(waveform)
-      pop_rate = electrophysiology.compute_population_rate(naps)
+      response = model.run_segment(waveform)
+      pop_rate = electrophysiology.compute_population_rate(response.naps)
       amp = electrophysiology.extract_wave_i_amplitude(
         pop_rate,
         sample_rate=sample_rate,
@@ -247,10 +263,42 @@ def simulate_abr_level_series(
         mode=mode,
       )
       amps.append(float(amp))
+      bm_by_level.append(response.bm)
 
     results[condition.name] = amps
+    bm_results[condition.name] = bm_by_level
 
-  return results
+  return AbrLevelSeries(wave1_au=results, bm=bm_results)
+
+
+def simulate_abr_level_series(
+  cohort: Cohort | Mapping[str, Any] | Sequence[CohortCondition] | None = None,
+  click_levels_db: Sequence[float] = DEFAULT_CLICK_LEVELS_DB,
+  sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
+  duration_s: float = 0.03,
+  pulse_width_s: float = 0.0001,
+  delay_s: float = 0.005,
+  window_s: float = 0.008,
+  mode: str = "baseline_to_peak",
+) -> dict[str, list[float]]:
+  """Runs ABR Wave-I click level series across cohort conditions.
+
+  Discards the basilar membrane motion; use `simulate_abr_level_series_with_bm`
+  to keep it.
+
+  Returns:
+    Dictionary mapping condition name to list of Wave-I onset amplitudes, in arbitrary units.
+  """
+  return simulate_abr_level_series_with_bm(
+    cohort=cohort,
+    click_levels_db=click_levels_db,
+    sample_rate=sample_rate,
+    duration_s=duration_s,
+    pulse_width_s=pulse_width_s,
+    delay_s=delay_s,
+    window_s=window_s,
+    mode=mode,
+  ).wave1_au
 
 
 def simulate_efr_level_series(
