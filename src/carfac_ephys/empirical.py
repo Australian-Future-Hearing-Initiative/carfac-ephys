@@ -518,7 +518,8 @@ def _load_independent_groups_dataset(
   measures = summary.get("measures", {})
 
   def declared_units(measure: str) -> str:
-    return str(measures.get(measure, {}).get("units", ""))
+    units = measures.get(measure, {}).get("units", "")
+    return units if isinstance(units, str) else ""
 
   def context_units_for(measure: str) -> str:
     units = declared_units(measure)
