@@ -354,7 +354,9 @@ def fit_response_scale_uv_per_au(
   """Fits the microvolts per arbitrary unit scale of simulated ABR responses.
 
   Simulated responses are dimensionless, so they are calibrated against the
-  pre-exposure (healthy) click Wave-I amplitude of the chinchilla dataset.
+  baseline click Wave-I amplitude of whichever dataset is supplied. The scale
+  therefore differs between datasets, and every value derived from it — including
+  a simulated threshold in dB — moves with that choice.
 
   Args:
     click_levels_db: Click sound levels in dB SPL.
@@ -800,10 +802,15 @@ def compare_to_empirical(
   validated = data.species == VALIDATION_REFERENCE_SPECIES
 
   # Threshold shift, only where the dataset actually measured ABR thresholds.
+  # The simulated value is calibration-dependent, so it is not a second opinion
+  # about the same quantity when there is nothing to compare it against.
   reference_shift_db = data.click_threshold_shift_db if data.has_abr_thresholds else None
-  simulated_shift_db = _simulated_threshold_shift_db(
-    click_levels_db, abr_results, data, condition, baseline
-  )
+  simulated_shift_db = None
+  if data.has_abr_thresholds:
+    simulated_shift_db = _simulated_threshold_shift_db(
+      click_levels_db, abr_results, data, condition, baseline
+    )
+
   shift_matched = None
   if validated and simulated_shift_db is not None and reference_shift_db is not None:
     shift_matched = abs(simulated_shift_db - reference_shift_db) <= THRESHOLD_SHIFT_TOLERANCE_DB
