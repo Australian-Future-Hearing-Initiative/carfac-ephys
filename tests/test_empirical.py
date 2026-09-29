@@ -553,3 +553,18 @@ class TestSummaryValidation:
     _write_grouped_dataset(tmp_path, summary)
     with pytest.raises(ValueError, match="declares baseline group"):
       load_abr_dataset("human", tmp_path, comparison_group="nexp")
+
+  def test_summary_design_must_match_the_dataset_definition(self, tmp_path):
+    # A summary claiming a paired design would otherwise load as grouped.
+    summary = _minimal_grouped_summary()
+    summary["design"] = "paired_timepoints"
+    _write_grouped_dataset(tmp_path, summary)
+    with pytest.raises(ValueError, match="declares design"):
+      load_abr_dataset("human", tmp_path)
+
+  def test_summary_comparison_groups_must_match_the_dataset_definition(self, tmp_path):
+    summary = _minimal_grouped_summary()
+    summary["comparison_groups"] = ["nexp"]
+    _write_grouped_dataset(tmp_path, summary)
+    with pytest.raises(ValueError, match="declares comparison groups"):
+      load_abr_dataset("human", tmp_path)

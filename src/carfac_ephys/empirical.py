@@ -539,6 +539,20 @@ def _load_independent_groups_dataset(
     )
   measures = summary.get("measures", {})
 
+  declared_design = summary.get("design")
+  if declared_design is not None and str(declared_design) != files.design:
+    raise ValueError(
+      f"'{species}' declares design '{files.design}', but its summary declares '{declared_design}'."
+    )
+  declared_groups = summary.get("comparison_groups")
+  if declared_groups is not None:
+    declared = tuple(str(group) for group in declared_groups)
+    if declared != files.comparison_labels:
+      raise ValueError(
+        f"'{species}' declares comparison groups {files.comparison_labels}, but its "
+        f"summary declares {declared}."
+      )
+
   def declared_units(measure: str) -> str:
     units = measures.get(measure, {}).get("units", "")
     return units if isinstance(units, str) else ""
