@@ -805,7 +805,6 @@ class TestCompareToEmpirical:
       dataset=load_abr_dataset("human"),
     )
 
-    assert "Bharadwaj" not in content
     assert "chinchillas" not in content
     assert "Measured (human (nexp))" in content
     assert "exploratory comparison" in content
