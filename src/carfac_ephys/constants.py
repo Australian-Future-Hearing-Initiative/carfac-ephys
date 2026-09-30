@@ -11,8 +11,6 @@ DEFAULT_SAMPLE_RATE: int = 32000
 DYNAMIC_RANGE_DB: float = 104.0
 
 
-# The dB conversions below return a scalar for a scalar and an array for an
-# array. The overloads tell type checkers which one a call site gets.
 @overload
 def db_spl_to_amplitude(db_spl: float) -> float: ...
 @overload

@@ -10,8 +10,7 @@ from carfac.jax import carfac
 
 from carfac_ephys import constants
 
-# Real scalar accepted for health and retention values. NumPy scalars are
-# included because np.float32 and the integer types are not `float` subclasses.
+# np.float32 and NumPy integers are not `float` subclasses, so `float` alone would reject them.
 RealScalar = float | np.floating | np.integer
 
 
