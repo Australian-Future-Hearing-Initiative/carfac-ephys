@@ -10,7 +10,7 @@ from carfac.jax import carfac
 
 from carfac_ephys import constants
 
-# np.float32 and NumPy integers are not `float` subclasses, so `float` alone would reject them.
+# Callers may pass NumPy scalars (np.float32, np.int64), which a plain `float` annotation rejects.
 RealScalar = float | np.floating | np.integer
 
 
