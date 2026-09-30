@@ -1,9 +1,11 @@
 # Local mirror of the checks CI runs (.github/workflows/test.yml).
-#   one-time:  uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+#   one-time:  uv run pre-commit install
 #   by hand:   uv run pre-commit run --all-files
 #   push stage: uv run pre-commit run pyrefly --all-files --hook-stage pre-push
 # ruff runs on every commit; pyrefly is slower and runs on push; pytest stays in CI.
 minimum_pre_commit_version: "3.0.0"
+# Lets a plain `pre-commit install` set up the push-stage pyrefly hook as well.
+default_install_hook_types: [pre-commit, pre-push]
 # Hooks run only at commit time unless they say otherwise (pyrefly below).
 default_stages: [pre-commit]
 

@@ -189,7 +189,39 @@ uv run carfac-ephys-simulate --quick --output-dir output/
 
 ---
 
-## 5. Package Architecture
+## 5. Contributing
+
+### Checks Every Pull Request Must Pass
+
+CI runs these checks on every pull request, and a pull request cannot merge until they pass. `uv sync` from the installation step already installs the tools.
+
+| Check | What it enforces | Run or fix locally |
+| :--- | :--- | :--- |
+| Ruff format | Code layout: 2-space indentation, lines up to 100 characters | `uv run ruff format .` |
+| Ruff check | Lint rules: import order, unused names, Google-style docstrings | `uv run ruff check --fix .` |
+| pyrefly | Type annotations in `src/` and `tests/` | `uv run pyrefly check` |
+| pytest | The test suite | `uv run pytest` |
+
+### Pre-commit Hooks (Optional)
+
+Pre-commit hooks run the fast checks on your machine, so you find problems in seconds instead of waiting for a CI run. Install them once per clone:
+```bash
+uv run pre-commit install
+```
+
+After that:
+- `git commit` runs Ruff format and Ruff check (with safe auto-fixes) on the staged files, plus basic file hygiene checks. It also refuses commits made directly on `main`.
+- `git push` runs pyrefly.
+
+If a hook changes a file, the commit stops so you can review the change. Stage the fixed files and commit again.
+
+The hooks are a convenience, not a requirement. Keeping your commits clean is your responsibility either way; the hooks only make it quicker.
+
+To skip the hooks once, for example for a work-in-progress commit on your own branch, add `--no-verify` to `git commit` or `git push`. CI still runs every check on the pull request, so it remains the final gate for anything that reaches `main`.
+
+---
+
+## 6. Package Architecture
 
 ```text
 carfac-ephys/
@@ -220,7 +252,7 @@ carfac-ephys/
 
 ---
 
-## 6. References
+## 7. References
 
 - **Bharadwaj HM, Hustedt-Mai AR, Ginsberg HM, et al.** (2022). *Cross-species experiments reveal widespread cochlear neural damage in normal hearing.* Communications Biology, 5(1), 733. [doi:10.1038/s42003-022-03691-4](https://doi.org/10.1038/s42003-022-03691-4).
 - **Mehraei G, Hickox AE, Bharadwaj HM, et al.** (2016). *Auditory Brainstem Response Latency in Noise as a Marker of Cochlear Synaptopathy.* Journal of Neuroscience, 36(13), 3755–3764. [doi:10.1523/JNEUROSCI.4460-15.2016](https://doi.org/10.1523/JNEUROSCI.4460-15.2016).
