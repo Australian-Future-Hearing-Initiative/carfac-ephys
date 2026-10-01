@@ -347,7 +347,7 @@ BASELINE_CONDITION: str = "Control"
 def fit_response_scale_uv_per_au(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
-  dataset: empirical.ChinchillaAbrDataset | None = None,
+  dataset: empirical.AbrDataset | None = None,
   level_db: float = CALIBRATION_LEVEL_DB,
   condition: str = BASELINE_CONDITION,
 ) -> float:
@@ -373,8 +373,8 @@ def fit_response_scale_uv_per_au(
     raise ValueError(f"No '{condition}' response at {level_db} dB SPL to calibrate against.")
 
   # Match it to the empirical pre-exposure click Wave-I amplitude.
-  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
-  measured_uv = data.high_level_w1_uv[empirical.CLICK_FREQUENCY_HZ].mean_pre
+  data = empirical.load_abr_dataset() if dataset is None else dataset
+  measured_uv = data.baseline_reference_w1_uv
   return electrophysiology.fit_microvolts_per_au([simulated_au], [measured_uv])
 
 
@@ -723,7 +723,7 @@ class EmpiricalComparison(NamedTuple):
 def _simulated_threshold_shift_db(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
-  dataset: empirical.ChinchillaAbrDataset,
+  dataset: empirical.AbrDataset,
   condition: str,
   baseline: str,
 ) -> float | None:
@@ -751,7 +751,7 @@ def _simulated_threshold_shift_db(
 def compare_to_empirical(
   click_levels_db: Sequence[float],
   abr_results: Mapping[str, Sequence[float]],
-  dataset: empirical.ChinchillaAbrDataset | None = None,
+  dataset: empirical.AbrDataset | None = None,
   condition: str = EXPOSED_CONDITION,
   baseline: str = BASELINE_CONDITION,
 ) -> EmpiricalComparison:
@@ -771,7 +771,7 @@ def compare_to_empirical(
   Returns:
     Record of the simulated values, the animal values, and their agreement.
   """
-  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+  data = empirical.load_abr_dataset() if dataset is None else dataset
 
   # Compare the click threshold shift, which the animals recovered.
   animal_shift_db = data.click_threshold_shift_db
@@ -882,7 +882,7 @@ def _plot_metric_bars(
 def plot_empirical_comparison(
   comparison: EmpiricalComparison,
   output_path: str | pathlib.Path,
-  dataset: empirical.ChinchillaAbrDataset | None = None,
+  dataset: empirical.AbrDataset | None = None,
 ) -> pathlib.Path:
   """Plots the simulated cohort against the chinchilla ABR measurements.
 
@@ -896,7 +896,7 @@ def plot_empirical_comparison(
   """
   path = pathlib.Path(output_path)
   path.parent.mkdir(parents=True, exist_ok=True)
-  data = empirical.load_chinchilla_abr_dataset() if dataset is None else dataset
+  data = empirical.load_abr_dataset() if dataset is None else dataset
 
   # Render one panel per validated metric.
   fig, (threshold_ax, ratio_ax) = plt.subplots(1, 2, figsize=(9, 4.5), dpi=300)
@@ -918,7 +918,7 @@ def plot_empirical_comparison(
   )
 
   # Overlay the individual animals to show the measured spread.
-  ratios = data.per_animal_w1_ratios
+  ratios = data.paired_w1_ratios
   ratio_ax.scatter([1] * len(ratios), ratios, color="#111111", s=18, zorder=3, label="Animals")
   ratio_ax.legend(fontsize=8, loc="upper right")
 
@@ -964,7 +964,7 @@ def validate_biological_signatures(
   abr_results: Mapping[str, Sequence[float]],
   efr_levels_db: Sequence[float],
   efr_results: Mapping[str, Sequence[float]],
-  dataset: empirical.ChinchillaAbrDataset | None = None,
+  dataset: empirical.AbrDataset | None = None,
 ) -> BiologicalValidation:
   """Validates simulated electrophysiology against animal literature findings.
 

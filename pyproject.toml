@@ -1,6 +1,6 @@
 [project]
 name = "carfac-ephys"
-version = "0.1.0"
+version = "0.2.0"
 description = "Simulating animal cochlear impairment electrophysiology with CARFAC."
 readme = "README.md"
 requires-python = ">=3.11"
