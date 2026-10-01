@@ -275,9 +275,10 @@ class TestCli:
     assert "**" not in result.output
     # The quick sweep cannot bracket the threshold criterion, so that row is
     # skipped while the 80 dB SPL ratio is still reported.
-    assert "Empirical comparison against Bharadwaj et al. (2022):" in result.output
+    assert "Dataset: chinchilla (2wk vs pre)" in result.output
+    assert "Validation against the chinchilla dataset" in result.output
     assert "| Click ABR threshold shift (dB) | n/a |" in result.output
-    assert "Suprathreshold Wave-I post/pre ratio" in result.output
+    assert "Suprathreshold Wave-I ratio" in result.output
 
   def test_cli_quick_with_plot(self, tmp_path: pathlib.Path):
     runner = CliRunner()
@@ -297,18 +298,39 @@ class TestCli:
     assert "Saved simulation report" in result.output
     assert (tmp_path / "abr_wave_i_growth.png").exists()
     assert (tmp_path / "efr_growth.png").exists()
-    assert (tmp_path / "empirical_comparison.png").exists()
-    assert (tmp_path / "simulation_report.md").exists()
+    assert (tmp_path / "empirical_comparison_chinchilla.png").exists()
+    assert (tmp_path / "simulation_report_chinchilla.md").exists()
     assert (tmp_path / "abr_wave_i_growth.png").stat().st_size > 0
     assert (tmp_path / "efr_growth.png").stat().st_size > 0
-    assert (tmp_path / "empirical_comparison.png").stat().st_size > 0
-    assert (tmp_path / "simulation_report.md").stat().st_size > 0
+    assert (tmp_path / "empirical_comparison_chinchilla.png").stat().st_size > 0
+    assert (tmp_path / "simulation_report_chinchilla.md").stat().st_size > 0
 
     # The quick sweep omits the 30-50 dB SPL levels, so the threshold criteria
     # have no data and must not be reported as failures.
-    report = (tmp_path / "simulation_report.md").read_text(encoding="utf-8")
+    report = (tmp_path / "simulation_report_chinchilla.md").read_text(encoding="utf-8")
     assert "OHC Loss Threshold Shift (30-50 dB SPL)**: SKIPPED" in report
     assert "FAILED" not in report
+
+  def test_unknown_comparison_group_is_a_usage_error(self):
+    result = CliRunner().invoke(
+      main, ["--species", "chinchilla", "--comparison-group", "ma", "--no-plot"]
+    )
+    assert result.exit_code == 2
+    assert "Traceback" not in result.output
+    assert "--comparison-group" in result.output
+
+  def test_comparison_group_is_case_insensitive(self):
+    result = CliRunner().invoke(
+      main, ["--species", "human", "--comparison-group", "NEXP", "--quick", "--no-plot"]
+    )
+    assert result.exit_code == 0
+
+  def test_help_lists_every_comparison_group(self):
+    result = CliRunner().invoke(main, ["--help"])
+    assert result.exit_code == 0
+    assert "2wk" in result.output
+    assert "nexp" in result.output
+    assert "ma" in result.output
 
 
 class TestMarkdownTableFormatter:
@@ -460,6 +482,22 @@ class TestBiologicalValidation:
     assert "Synaptopathy Suprathreshold Scaling (80 dB SPL)**: FAILED" in content
     assert "SOME CHECKS FAILED" in content
 
+  def test_cli_human_dataset_reports_exploratory_and_names_files_by_group(self, tmp_path):
+    runner = CliRunner()
+    result = runner.invoke(
+      main,
+      ["--quick", "--species", "human", "--comparison-group", "ma", "--output-dir", str(tmp_path)],
+    )
+    assert result.exit_code == 0
+    assert "Dataset: human (ma vs ctrl)" in result.output
+    assert "Exploratory comparison against the human dataset" in result.output
+    assert "PASSED" not in result.output
+    # The file the report names must be the file the CLI writes.
+    assert (tmp_path / "empirical_comparison_human_ma.png").exists()
+    report_path = tmp_path / "simulation_report_human_ma.md"
+    assert report_path.exists()
+    assert "empirical_comparison_human_ma.png" in report_path.read_text(encoding="utf-8")
+
 
 class TestGenerateSimulationReport:
   """Tests for generate_simulation_report."""
@@ -494,11 +532,12 @@ class TestGenerateSimulationReport:
     )
 
     assert "# CARFAC Electrophysiology Cohort Simulation Report" in content
-    assert "Bharadwaj et al. 2022" in content
+    assert "Bharadwaj" in content
     assert "Synaptopathy-50" in content
-    assert "Suprathreshold Wave-I Attenuation vs Animals**: PASSED" in content
-    assert "## 5. Empirical Comparison with Animal Data" in content
-    assert "Animal (Bharadwaj et al. 2022)" in content
+    assert "Suprathreshold Wave-I Attenuation**: PASSED" in content
+    assert "## 5. Empirical Comparison" in content
+    assert "Measured (chinchilla (2wk))" in content
+    assert "empirical_comparison_chinchilla.png" in content
     assert "ABR Wave-I Onset Amplitude (AU)" in content
     assert "spikes/s" not in content
     assert "Fitted scale factor" in content
@@ -575,13 +614,19 @@ FULL_SWEEP_ABR_RESULTS = {
 class TestCompareToEmpirical:
   """Tests for compare_to_empirical."""
 
-  def test_selective_cohort_matches_the_noise_exposed_animals(self):
+  def test_selective_cohort_matches_the_reference_dataset(self):
     dataset = load_abr_dataset()
     comparison = compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS)
 
-    # Both animal reference values come straight from the chinchilla dataset.
-    assert comparison.animal_threshold_shift_db == pytest.approx(dataset.click_threshold_shift_db)
-    assert comparison.animal_w1_ratio == pytest.approx(dataset.wave_i_ratio())
+    # Both reference values come straight from the chinchilla dataset.
+    assert comparison.validated is True
+    assert comparison.reference_threshold_shift_db == pytest.approx(
+      dataset.click_threshold_shift_db
+    )
+    assert comparison.reference_w1_ratio == pytest.approx(dataset.reference_w1_ratio)
+    # Unchanged from before the loader refactor: the click condition, not the
+    # tone average.
+    assert comparison.reference_w1_ratio == pytest.approx(0.742, abs=0.01)
 
     # The simulated cohort preserves threshold and reproduces the attenuation.
     assert comparison.simulated_threshold_shift_db == pytest.approx(0.23, abs=0.05)
@@ -600,16 +645,70 @@ class TestCompareToEmpirical:
     assert comparison.threshold_shift_matched is False
     assert comparison.w1_ratio_matched is True
 
-  def test_ratio_outside_the_animal_range_fails(self):
-    # Halve the suprathreshold response, well below the animal ratio.
+  def test_ratio_outside_the_reference_range_fails(self):
+    # Halve the suprathreshold response, well below the reference ratio.
     attenuated = dict(FULL_SWEEP_ABR_RESULTS)
     attenuated["Selective-Synaptopathy"] = [0.0123, 0.1238, 1.2915, 10.0933, 35.3127, 30.0]
     comparison = compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, attenuated)
 
     ratio = comparison.simulated_w1_ratio
     assert ratio is not None
-    assert abs(ratio - comparison.animal_w1_ratio) > W1_RATIO_TOLERANCE
+    assert abs(ratio - comparison.reference_w1_ratio) > W1_RATIO_TOLERANCE
     assert comparison.w1_ratio_matched is False
+
+  def test_human_dataset_is_compared_without_a_pass_fail_verdict(self):
+    # The cohorts are tuned to the chinchilla data, so a human comparison is
+    # reported side by side rather than scored.
+    human = load_abr_dataset("human")
+    comparison = compare_to_empirical(
+      FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=human
+    )
+
+    assert comparison.validated is False
+    assert comparison.species == "human"
+    assert comparison.comparison_group == "nexp"
+    assert comparison.threshold_shift_matched is None
+    assert comparison.w1_ratio_matched is None
+
+    # Human data carries no ABR thresholds, so neither side of the threshold row
+    # is claimed: the simulated value is calibration-dependent and would invite a
+    # comparison that cannot be made.
+    assert comparison.reference_threshold_shift_db is None
+    assert comparison.simulated_threshold_shift_db is None
+    assert comparison.reference_w1_ratio == pytest.approx(human.ratio_of_mean_w1)
+    assert comparison.simulated_w1_ratio is not None
+
+  def test_human_comparison_group_selects_its_own_reference(self):
+    nexp = compare_to_empirical(
+      FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=load_abr_dataset("human")
+    )
+    ma = compare_to_empirical(
+      FULL_SWEEP_CLICK_LEVELS,
+      FULL_SWEEP_ABR_RESULTS,
+      dataset=load_abr_dataset("human", comparison_group="ma"),
+    )
+    assert nexp.comparison_group == "nexp"
+    assert ma.comparison_group == "ma"
+    assert nexp.reference_w1_ratio == pytest.approx(0.9441, abs=1e-4)
+    assert ma.reference_w1_ratio == pytest.approx(0.5280, abs=1e-4)
+
+  def test_human_table_omits_status_and_reports_no_threshold(self):
+    comparison = compare_to_empirical(
+      FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=load_abr_dataset("human")
+    )
+    table = format_empirical_comparison_table(comparison)
+    assert "PASSED" not in table
+    assert "FAILED" not in table
+    assert "Status" not in table
+    assert "not measured" in table
+    assert "Exploratory comparison" in table
+
+  def test_chinchilla_table_keeps_its_verdict(self):
+    table = format_empirical_comparison_table(
+      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS)
+    )
+    assert "Status" in table
+    assert "PASSED" in table
 
   def test_quick_sweep_leaves_metrics_unresolved(self):
     # The 60-80 dB SPL sweep never brackets the threshold criterion.
@@ -636,10 +735,77 @@ class TestCompareToEmpirical:
 
   def test_plot_empirical_comparison(self, tmp_path: pathlib.Path):
     out = tmp_path / "empirical_comparison.png"
+    dataset = load_abr_dataset()
     path = plot_empirical_comparison(
-      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS), out
+      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=dataset),
+      out,
+      dataset=dataset,
     )
 
     assert path == out
     assert out.exists()
     assert out.stat().st_size > 1000
+
+  def test_plot_rejects_a_dataset_that_disagrees_with_the_comparison(self, tmp_path):
+    human = compare_to_empirical(
+      FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=load_abr_dataset("human")
+    )
+    with pytest.raises(ValueError, match="but the comparison describes"):
+      plot_empirical_comparison(human, tmp_path / "mismatch.png", dataset=load_abr_dataset())
+
+  def test_calibration_level_labels_the_ratio_row_only(self):
+    # 80 dB SPL describes the Wave-I ratio, not the threshold shift, so it must
+    # not sit in a column header that spans both rows.
+    table = format_empirical_comparison_table(
+      compare_to_empirical(FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS)
+    )
+    header_line, _separator, threshold_line, ratio_line = table.splitlines()[:4]
+
+    assert "dB SPL" not in header_line
+    assert "dB SPL" not in threshold_line
+    assert "80 dB SPL" in ratio_line
+
+  def test_single_panel_figure_is_widened_and_titles_wrap(self, tmp_path):
+    human = load_abr_dataset("human")
+    comparison = compare_to_empirical(
+      FULL_SWEEP_CLICK_LEVELS, FULL_SWEEP_ABR_RESULTS, dataset=human
+    )
+    path = tmp_path / "human.png"
+    plot_empirical_comparison(comparison, path, dataset=human)
+
+    assert path.exists() and path.stat().st_size > 0
+
+  def test_human_report_does_not_claim_chinchilla_provenance(self):
+    # Every other report test uses the default dataset, which is how the
+    # hardcoded chinchilla paragraph survived above a human table.
+    click_levels = [40.0, 80.0]
+    abr_results = {
+      "Control": [0.1282, 67.5298],
+      "Synaptopathy-50": [0.0760, 35.5266],
+      "Synaptopathy-25": [0.0414, 18.2008],
+      "Selective-Synaptopathy": [0.1238, 46.6437],
+      "OHC-Loss": [0.0025, 0.8301],
+      "Mixed-Loss": [0.0012, 0.4261],
+    }
+    efr_levels = [40.0, 60.0, 80.0]
+    efr_results = {
+      "Control": [1.0298, 2.4846, 5.8168],
+      "Synaptopathy-50": [0.6961, 1.4827, 2.8883],
+      "Synaptopathy-25": [0.3820, 0.6988, 1.9063],
+      "Selective-Synaptopathy": [0.9641, 1.8917, 4.6401],
+      "OHC-Loss": [0.0036, 0.3421, 4.7608],
+      "Mixed-Loss": [0.0022, 0.2073, 2.5421],
+    }
+
+    content = generate_simulation_report(
+      click_levels_db=click_levels,
+      abr_results=abr_results,
+      efr_levels_db=efr_levels,
+      efr_results=efr_results,
+      dataset=load_abr_dataset("human"),
+    )
+
+    assert "chinchillas" not in content
+    assert "Measured (human (nexp))" in content
+    assert "exploratory comparison" in content
+    assert "empirical_comparison_human_nexp.png" in content

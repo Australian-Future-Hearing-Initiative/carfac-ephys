@@ -115,7 +115,7 @@ Selective loss of the high-threshold fibers leaves the near-threshold response a
 
 ### Empirical Validation Against Chinchilla ABR Data
 
-The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_chinchilla_abr_dataset`), not from hand-picked bands.
+The Selective-Synaptopathy cohort stands in for the noise-exposed chinchillas of Bharadwaj et al. (2022), which recovered their click ABR thresholds two weeks after exposure while retaining a reduced suprathreshold Wave-I. Simulated thresholds are the $0.1$ $\mu$V crossing of the interpolated Wave-I growth function, converted through the fitted scale factor; the animal values come from the packaged dataset (`carfac_ephys.load_abr_dataset`), not from hand-picked bands.
 
 | Metric | Simulated (Selective-Synaptopathy) | Animal (Bharadwaj et al. 2022) | Tolerance | Status |
 | :--- | :---: | :---: | :---: | :---: |
@@ -162,7 +162,7 @@ redistribution.
 
 ### 2. Run Automated Test Suite
 
-Verify all 144 unit and integration tests:
+Run the unit and integration tests:
 ```bash
 uv run pytest -v
 ```
@@ -179,7 +179,43 @@ This will:
 2. Run SAM-tone EFR simulations from 40 to 80 dB SPL.
 3. Validate all biological signatures, including the quantitative comparison against the chinchilla ABR data.
 4. Print summary tables to stdout.
-5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`, `empirical_comparison.png`) and `simulation_report.md` to `output/`.
+5. Save diagnostic figures (`abr_wave_i_growth.png`, `efr_growth.png`, `empirical_comparison_<dataset>.png`) and `simulation_report_<dataset>.md` to `output/`.
+
+#### Choosing the Empirical Dataset
+
+`--species` selects which **empirical reference** the simulation is compared against. The
+simulation itself is not re-run: the cohorts and every model parameter stay exactly the same, and
+the underlying Wave-I responses in model units are identical. What does change is the calibration —
+the µV-per-AU scale factor is fitted to the chosen dataset's baseline amplitude (≈0.0316 µV/AU
+against chinchilla `pre`, ≈0.0172 against human `ctrl`) — so any quantity reported in microvolts,
+or in dB derived from them, moves with that choice. `--species human` therefore produces an
+exploratory comparison against human data, not a switch to a human-specific model.
+
+```bash
+uv run carfac-ephys-simulate --species human --comparison-group ma --output-dir output/
+```
+
+| `--species` | Baseline | `--comparison-group` | Design |
+| :--- | :--- | :--- | :--- |
+| `chinchilla` *(default)* | `pre` | `2wk` | Same animal measured twice |
+| `human` | `ctrl` | `nexp` *(default)*, `ma` | Independent groups of listeners |
+
+Running a human comparison needs nothing beyond the packaged aggregate summary; the individual-level source recordings are not required.
+
+The cohorts are tuned to the chinchilla data, so only that comparison is scored against tolerances. Against the human dataset the simulated and measured values are reported side by side as an exploratory comparison, with no pass/fail verdict. The human dataset also reports no ABR thresholds — its audiometric measures are behavioural pure-tone averages in dB HL, which are not comparable with a simulated ABR threshold in dB SPL — so its threshold row reads "not measured" rather than being filled in from a different quantity.
+
+The human groups differ in the origin of the hearing loss, not only its degree:
+
+| Human group | Listeners | Origin of hearing loss |
+| :--- | :--- | :--- |
+| `ctrl` | Control | Baseline group |
+| `nexp` | Noise-exposed | Acoustic overexposure — the human analogue of the noise-exposed chinchillas the cohorts are tuned against |
+| `ma` | Mature | Presbyacusis: age-related, arising from a different mechanism than noise damage |
+
+`--comparison-group ma` is therefore not a second replicate of the noise-exposure result; the
+cohorts model selective synaptopathy from overexposure, so `nexp` is the comparison they were
+built for and `ma` asks a different question of the same simulation.
+
 
 #### Fast Smoke Test
 To verify the pipeline on a reduced 2-level subset:
@@ -227,10 +263,12 @@ To skip the hooks once, for example for a work-in-progress commit on your own br
 carfac-ephys/
 ├── pyproject.toml              # Standalone dependencies and scripts
 ├── README.md                   # Documentation and walkthrough
+├── scripts/
+│   └── generate_human_abr_summary.py  # Regenerates the human group summary from the CSV
 ├── assets/                     # Published diagnostic figures
 │   ├── abr_wave_i_growth.png
 │   ├── efr_growth.png
-│   └── empirical_comparison.png
+│   └── empirical_comparison.png   # published chinchilla figure
 ├── src/
 │   └── carfac_ephys/
 │       ├── __init__.py
@@ -238,7 +276,7 @@ carfac-ephys/
 │       ├── stimuli.py          # Calibrated click and SAM tone generation
 │       ├── carfac_model.py     # Biophysical CARFAC wrapper (OHC & fiber retention)
 │       ├── electrophysiology.py # ABR Wave-I and EFR metric extractors
-│       ├── empirical.py        # Chinchilla ABR dataset loader (Bharadwaj et al. 2022)
+│       ├── empirical.py        # Empirical ABR dataset loader (chinchilla and human)
 │       ├── data/               # Packaged empirical data files
 │       ├── experiment.py       # Cohort definitions, level sweeps, validation
 │       └── cli.py              # CLI entry point (carfac-ephys-simulate)
