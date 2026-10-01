@@ -3,6 +3,7 @@
 import pathlib
 from typing import Any
 
+import numpy as np
 import pytest
 from click.testing import CliRunner
 
@@ -28,6 +29,7 @@ from carfac_ephys.experiment import (
   plot_efr_growth,
   plot_empirical_comparison,
   simulate_abr_level_series,
+  simulate_abr_level_series_with_bm,
   simulate_efr_level_series,
   validate_biological_signatures,
 )
@@ -809,3 +811,27 @@ class TestCompareToEmpirical:
     assert "Measured (human (nexp))" in content
     assert "exploratory comparison" in content
     assert "empirical_comparison_human_nexp.png" in content
+
+
+class TestSimulateAbrLevelSeriesWithBm:
+  """The BM sweep must line up with the Wave-I sweep it accompanies."""
+
+  def test_bm_accompanies_every_cohort_and_level(self):
+    levels = [40.0, 80.0]
+    series = simulate_abr_level_series_with_bm(click_levels_db=levels)
+
+    assert set(series.bm) == set(series.wave1_au)
+    for condition, amps in series.wave1_au.items():
+      assert len(series.bm[condition]) == len(amps) == len(levels)
+
+    n_channels = {bm.shape[1] for per_level in series.bm.values() for bm in per_level}
+    assert len(n_channels) == 1, "every cohort must report the same channel count"
+
+    for per_level in series.bm.values():
+      for bm in per_level:
+        assert bm.ndim == 2 and bm.shape[0] > 0
+        assert np.isfinite(bm).all()
+
+    # A louder click must move the membrane further.
+    quiet, loud = series.bm["Control"]
+    assert np.abs(loud).max() > np.abs(quiet).max()

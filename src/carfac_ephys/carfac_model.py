@@ -87,6 +87,18 @@ def _normalize_fiber_retention(
   return factors
 
 
+class SegmentResponse(NamedTuple):
+  """One segment's responses for the primary ear.
+
+  Attributes:
+    naps: Neural activity patterns, shape (samples, n_channels).
+    bm: Basilar membrane motion, shape (samples, n_channels).
+  """
+
+  naps: np.ndarray
+  bm: np.ndarray
+
+
 class CarfacModel:
   """CARFAC model wrapper for simulating cochlear electrophysiology."""
 
@@ -130,14 +142,14 @@ class CarfacModel:
     """Resets the model state to initial resting conditions."""
     self.state = copy.deepcopy(self._initial_state)
 
-  def run(self, waveform: np.ndarray) -> np.ndarray:
-    """Runs a stimulus waveform and returns neural activity patterns (NAPs).
+  def run_segment(self, waveform: np.ndarray) -> SegmentResponse:
+    """Runs a stimulus waveform, returning NAPs and basilar membrane motion.
 
     Args:
       waveform: 1D or 2D single-channel stimulus array.
 
     Returns:
-      NAPs array of shape (samples, n_channels).
+      SegmentResponse carrying both responses for the primary ear.
     """
     # Convert input to float32 array.
     wave_arr = np.asarray(waveform, dtype=np.float32)
@@ -152,7 +164,8 @@ class CarfacModel:
 
     # Handle zero-sample input.
     if wave_arr.shape[0] == 0:
-      return np.zeros((0, self.n_channels), dtype=np.float32)
+      empty = np.zeros((0, self.n_channels), dtype=np.float32)
+      return SegmentResponse(naps=empty, bm=empty.copy())
 
     # Run CARFAC segment.
     output = carfac.run_segment(
@@ -163,9 +176,26 @@ class CarfacModel:
       self.state,
     )
 
-    # Update state and extract naps for primary ear.
+    # Update state and extract the primary ear's responses.
     self.state = output.state
-    return np.asarray(output.naps[:, :, 0], dtype=np.float32)
+    return SegmentResponse(
+      naps=np.asarray(output.naps[:, :, 0], dtype=np.float32),
+      bm=np.asarray(output.bm[:, :, 0], dtype=np.float32),
+    )
+
+  def run(self, waveform: np.ndarray) -> np.ndarray:
+    """Runs a stimulus waveform and returns neural activity patterns (NAPs).
+
+    The narrow entry point most callers want. Use `run_segment` when the
+    basilar membrane motion is needed alongside.
+
+    Args:
+      waveform: 1D or 2D single-channel stimulus array.
+
+    Returns:
+      NAPs array of shape (samples, n_channels).
+    """
+    return self.run_segment(waveform).naps
 
 
 def build_model(
