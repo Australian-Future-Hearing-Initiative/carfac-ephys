@@ -12,11 +12,11 @@ DYNAMIC_RANGE_DB: float = 104.0
 
 
 @overload
-def db_spl_to_amplitude(db_spl: float) -> float: ...
+def db_spl_to_amplitude(db_spl: float | np.floating) -> float: ...
 @overload
 def db_spl_to_amplitude(db_spl: np.ndarray) -> np.ndarray: ...
 def db_spl_to_amplitude(
-  db_spl: float | np.ndarray,
+  db_spl: float | np.floating | np.ndarray,
 ) -> float | np.ndarray:
   """Converts sound pressure level in dB SPL to digital linear amplitude.
 
@@ -30,7 +30,12 @@ def db_spl_to_amplitude(
     Digital amplitude (scalar or array).
   """
   # Compute linear digital amplitude.
-  return 10.0 ** ((db_spl - DYNAMIC_RANGE_DB) / 20.0)
+  amplitude = 10.0 ** ((db_spl - DYNAMIC_RANGE_DB) / 20.0)
+
+  # Return scalar or array matching input type.
+  if np.ndim(db_spl) == 0:
+    return float(amplitude)
+  return amplitude
 
 
 @overload
