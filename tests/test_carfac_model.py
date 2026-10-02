@@ -119,6 +119,8 @@ class TestOhcHealth:
     assert np.allclose(model_f32.ohc_health, 0.5)
     model_f64 = build_model(ohc_health=np.float64(0.8))
     assert np.allclose(model_f64.ohc_health, 0.8)
+    model_list = build_model(ohc_health=[np.float32(0.5)] * 77)
+    assert np.allclose(model_list.ohc_health, 0.5)
 
   def test_invalid_health_type(self):
     with pytest.raises(TypeError):
@@ -178,6 +180,8 @@ class TestFiberRetentionScaling:
     assert np.allclose(model_f32.n_fibers[:, 0], 250.0)
     model_f64 = build_model(fiber_retention=np.float64(0.8))
     assert np.allclose(model_f64.n_fibers[:, 0], 400.0)
+    model_list = build_model(fiber_retention=[np.float32(0.5)] * 3)
+    assert np.allclose(model_list.n_fibers[:, 0], 250.0)
 
   def test_invalid_fiber_type(self):
     with pytest.raises(TypeError):
