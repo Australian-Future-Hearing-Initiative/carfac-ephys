@@ -4,6 +4,9 @@ from typing import overload
 
 import numpy as np
 
+# Callers may pass NumPy scalars (np.float32, np.int64), which a plain `float` annotation rejects.
+RealScalar = float | np.floating | np.integer
+
 # Default acoustic sampling rate in Hz.
 DEFAULT_SAMPLE_RATE: int = 32000
 
@@ -12,11 +15,11 @@ DYNAMIC_RANGE_DB: float = 104.0
 
 
 @overload
-def db_spl_to_amplitude(db_spl: float | np.floating) -> float: ...
+def db_spl_to_amplitude(db_spl: RealScalar) -> float: ...
 @overload
 def db_spl_to_amplitude(db_spl: np.ndarray) -> np.ndarray: ...
 def db_spl_to_amplitude(
-  db_spl: float | np.floating | np.ndarray,
+  db_spl: RealScalar | np.ndarray,
 ) -> float | np.ndarray:
   """Converts sound pressure level in dB SPL to digital linear amplitude.
 
@@ -39,11 +42,11 @@ def db_spl_to_amplitude(
 
 
 @overload
-def amplitude_to_db_spl(amplitude: float | np.floating) -> float: ...
+def amplitude_to_db_spl(amplitude: RealScalar) -> float: ...
 @overload
 def amplitude_to_db_spl(amplitude: np.ndarray) -> np.ndarray: ...
 def amplitude_to_db_spl(
-  amplitude: float | np.floating | np.ndarray,
+  amplitude: RealScalar | np.ndarray,
 ) -> float | np.ndarray:
   """Converts digital linear amplitude to sound pressure level in dB SPL.
 
