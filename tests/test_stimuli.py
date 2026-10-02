@@ -52,6 +52,11 @@ class TestConstants:
       assert type(db) is float
       assert db == pytest.approx(level)
 
+  def test_zero_dimensional_array_conversion(self):
+    # The ndarray overload cannot exclude 0-d arrays, so pin that they return a float.
+    assert type(db_spl_to_amplitude(np.array(84.0))) is float
+    assert type(amplitude_to_db_spl(np.array(0.1))) is float
+
 
 class TestGenerateClick:
   """Tests for rectangular click stimulus generation."""

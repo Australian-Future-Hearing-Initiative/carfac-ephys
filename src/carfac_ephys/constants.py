@@ -30,7 +30,7 @@ def db_spl_to_amplitude(
     db_spl: Sound pressure level in dB SPL.
 
   Returns:
-    Digital amplitude (scalar or array).
+    Digital amplitude: a Python float for scalar or 0-d array input, otherwise an array.
   """
   # Compute linear digital amplitude.
   amplitude = 10.0 ** ((db_spl - DYNAMIC_RANGE_DB) / 20.0)
@@ -54,7 +54,8 @@ def amplitude_to_db_spl(
     amplitude: Digital linear amplitude.
 
   Returns:
-    Sound pressure level in dB SPL.
+    Sound pressure level in dB SPL: a Python float for scalar or 0-d array input, otherwise
+    an array.
   """
   # Safe log computation handling non-positive amplitudes.
   amp_arr = np.asarray(amplitude)
