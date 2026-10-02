@@ -41,6 +41,22 @@ class TestConstants:
     recovered = amplitude_to_db_spl(amps)
     assert np.allclose(recovered, levels)
 
+  def test_numpy_scalar_conversion(self):
+    # `type is float`, not isinstance: np.float64 subclasses float and would pass unconverted.
+    for level in (np.float32(84.0), np.float64(84.0), np.int64(84)):
+      amp = db_spl_to_amplitude(level)
+      assert type(amp) is float
+      assert amp == pytest.approx(0.1)
+    for amp, level in ((np.float32(0.1), 84.0), (np.float64(0.1), 84.0), (np.int64(1), 104.0)):
+      db = amplitude_to_db_spl(amp)
+      assert type(db) is float
+      assert db == pytest.approx(level)
+
+  def test_zero_dimensional_array_conversion(self):
+    # The ndarray overload cannot exclude 0-d arrays, so pin that they return a float.
+    assert type(db_spl_to_amplitude(np.array(84.0))) is float
+    assert type(amplitude_to_db_spl(np.array(0.1))) is float
+
 
 class TestGenerateClick:
   """Tests for rectangular click stimulus generation."""
@@ -285,11 +301,8 @@ class TestEdgeCasesAndExports:
     assert amplitude_to_db_spl(-1.0) == -np.inf
     arr = np.array([0.0, -0.5, 1.0])
     res = amplitude_to_db_spl(arr)
-    # pyrefly: ignore [bad-index]
     assert res[0] == -np.inf
-    # pyrefly: ignore [bad-index]
     assert res[1] == -np.inf
-    # pyrefly: ignore [bad-index]
     assert np.isclose(res[2], 104.0)
 
   def test_package_exports(self):
