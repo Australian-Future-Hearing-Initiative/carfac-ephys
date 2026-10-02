@@ -41,6 +41,17 @@ class TestConstants:
     recovered = amplitude_to_db_spl(amps)
     assert np.allclose(recovered, levels)
 
+  def test_numpy_scalar_conversion(self):
+    # `type is float`, not isinstance: np.float64 subclasses float and would pass unconverted.
+    for level in (np.float32(84.0), np.float64(84.0), np.int64(84)):
+      amp = db_spl_to_amplitude(level)
+      assert type(amp) is float
+      assert amp == pytest.approx(0.1)
+    for amp, level in ((np.float32(0.1), 84.0), (np.float64(0.1), 84.0), (np.int64(1), 104.0)):
+      db = amplitude_to_db_spl(amp)
+      assert type(db) is float
+      assert db == pytest.approx(level)
+
 
 class TestGenerateClick:
   """Tests for rectangular click stimulus generation."""
