@@ -21,10 +21,16 @@ class AbrLevelSeries(NamedTuple):
     wave1_au: Condition name to Wave-I onset amplitudes, one per level.
     bm: Condition name to basilar membrane motion, one array per level, each
       of shape (samples, n_channels).
+    pole_freqs: Characteristic frequency of each BM channel in Hz, so column 'i' of every
+    BM array belongs to 'pole_freqs[i]'. Length equals 'bm.shape[1]'.
+    sample_rate: Sampling rate of the BM waveforms in Hz, giving them a time axis of
+    'np.arange(bm.shape[0]) / sample rate'.
   """
 
   wave1_au: dict[str, list[float]]
   bm: dict[str, list[np.ndarray]]
+  pole_freqs: np.ndarray
+  sample_rate: int
 
 
 class CohortCondition(NamedTuple):
@@ -232,6 +238,7 @@ def simulate_abr_level_series_with_bm(
   resolved_cohort = _resolve_cohort(cohort)
   results: dict[str, list[float]] = {}
   bm_results: dict[str, list[np.ndarray]] = {}
+  pole_freqs: np.ndarray | None = None
 
   # Iterate through each condition.
   for condition in resolved_cohort.values():
@@ -240,6 +247,10 @@ def simulate_abr_level_series_with_bm(
       fiber_retention=condition.fiber_retention,
       fs=sample_rate,
     )
+
+    if pole_freqs is None:
+      pole_freqs = model.pole_freqs
+
     amps: list[float] = []
     bm_by_level: list[np.ndarray] = []
 
@@ -268,7 +279,15 @@ def simulate_abr_level_series_with_bm(
     results[condition.name] = amps
     bm_results[condition.name] = bm_by_level
 
-  return AbrLevelSeries(wave1_au=results, bm=bm_results)
+  if pole_freqs is None:
+    raise ValueError("Cohort contains no conditions, so no responses were simulated.")
+
+  return AbrLevelSeries(
+    wave1_au=results,
+    bm=bm_results,
+    pole_freqs=pole_freqs,
+    sample_rate=sample_rate,
+  )
 
 
 def simulate_abr_level_series(

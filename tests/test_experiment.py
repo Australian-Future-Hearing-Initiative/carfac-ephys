@@ -9,6 +9,7 @@ from click.testing import CliRunner
 
 from carfac_ephys.carfac_model import FiberRetention
 from carfac_ephys.cli import main
+from carfac_ephys.constants import DEFAULT_SAMPLE_RATE
 from carfac_ephys.empirical import load_abr_dataset
 from carfac_ephys.experiment import (
   DEFAULT_COHORT_CONDITIONS,
@@ -835,3 +836,12 @@ class TestSimulateAbrLevelSeriesWithBm:
     # A louder click must move the membrane further.
     quiet, loud = series.bm["Control"]
     assert np.abs(loud).max() > np.abs(quiet).max()
+
+    # The BM channels are meaningless without a place axis to read them against.
+    assert series.sample_rate == DEFAULT_SAMPLE_RATE
+    assert series.pole_freqs.ndim == 1
+    for per_level in series.bm.values():
+      for bm in per_level:
+        assert len(series.pole_freqs) == bm.shape[1]
+    # Characteristic frequencies run high to low across the channel array.
+    assert series.pole_freqs[0] > series.pole_freqs[-1]
