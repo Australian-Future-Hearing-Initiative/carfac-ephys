@@ -94,8 +94,11 @@ class SegmentResponse(NamedTuple):
   """One segment's responses for the primary ear.
 
   Attributes:
-    naps: Neural activity patterns, shape (samples, n_channels).
-    bm: Basilar membrane motion, shape (samples, n_channels).
+    naps: Neural activity patterns, the auditory nerve firing rate per channel in arbitrary units, shape (samples, n_channels).
+    bm: Basilar membrane motion waveform. The CAR filterbank ouput per channel,
+    the band-pass filtered traveling-wave response at that channel's
+    characteristic frequency before hair cell transduction. Signed and oscillates around zero.
+    Arbitrary units on the same scale as the input stimulus, shape (samples, n_channels).
   """
 
   naps: np.ndarray
