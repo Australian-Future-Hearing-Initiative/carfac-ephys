@@ -34,6 +34,7 @@ from carfac_ephys.experiment import (
   simulate_efr_level_series,
   validate_biological_signatures,
 )
+from carfac_ephys.middle_ear import VERHULST_2018
 
 
 class TestCohortDefinitions:
@@ -845,3 +846,28 @@ class TestSimulateAbrLevelSeriesWithBm:
         assert len(series.pole_freqs) == bm.shape[1]
     # Characteristic frequencies run high to low across the channel array.
     assert series.pole_freqs[0] > series.pole_freqs[-1]
+
+
+class TestMiddleEarFilterOption:
+  """The middle-ear filter is opt-in and must not change the default sweep."""
+
+  def test_default_is_unfiltered(self):
+    # Every pinned value in this repository was fitted without the filter.
+    one_cohort = [CohortCondition(name="Control")]
+    plain = simulate_abr_level_series(cohort=one_cohort, click_levels_db=[80.0])
+    explicit_none = simulate_abr_level_series(
+      cohort=one_cohort, click_levels_db=[80.0], middle_ear_filter=None
+    )
+
+    assert plain == explicit_none
+
+  def test_enabling_the_filter_changes_the_response(self):
+    one_cohort = [CohortCondition(name="Control")]
+    unfiltered = simulate_abr_level_series(cohort=one_cohort, click_levels_db=[80.0])
+    filtered = simulate_abr_level_series(
+      cohort=one_cohort,
+      click_levels_db=[80.0],
+      middle_ear_filter=VERHULST_2018,
+    )
+
+    assert filtered["Control"][0] != pytest.approx(unfiltered["Control"][0])
