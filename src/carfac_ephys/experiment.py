@@ -84,6 +84,13 @@ DEFAULT_COHORT_CONDITIONS: tuple[CohortCondition, ...] = (
 DEFAULT_CLICK_LEVELS_DB: tuple[float, ...] = (30.0, 40.0, 50.0, 60.0, 70.0, 80.0)
 DEFAULT_EFR_LEVELS_DB: tuple[float, ...] = (40.0, 50.0, 60.0, 70.0, 80.0)
 
+# Click stimulus and Wave-I analysis defaults, shared by the two level-series
+DEFAULT_CLICK_DURATION_S: float = 0.03
+DEFAULT_CLICK_PULSE_WIDTH_S: float = 0.0001
+DEFAULT_CLICK_DELAY_S: float = 0.005
+DEFAULT_WAVE_I_WINDOW_S: float = 0.008
+DEFAULT_WAVE_I_MODE: str = "baseline_to_peak"
+
 
 def _normalize_cohort_condition(
   name: str,
@@ -206,11 +213,11 @@ def simulate_abr_level_series_with_bm(
   cohort: Cohort | Mapping[str, Any] | Sequence[CohortCondition] | None = None,
   click_levels_db: Sequence[float] = DEFAULT_CLICK_LEVELS_DB,
   sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
-  duration_s: float = 0.03,
-  pulse_width_s: float = 0.0001,
-  delay_s: float = 0.005,
-  window_s: float = 0.008,
-  mode: str = "baseline_to_peak",
+  duration_s: float = DEFAULT_CLICK_DURATION_S,
+  pulse_width_s: float = DEFAULT_CLICK_PULSE_WIDTH_S,
+  delay_s: float = DEFAULT_CLICK_DELAY_S,
+  window_s: float = DEFAULT_WAVE_I_WINDOW_S,
+  mode: str = DEFAULT_WAVE_I_MODE,
 ) -> AbrLevelSeries:
   """Runs ABR Wave-I click level series across cohort conditions.
 
@@ -294,16 +301,28 @@ def simulate_abr_level_series(
   cohort: Cohort | Mapping[str, Any] | Sequence[CohortCondition] | None = None,
   click_levels_db: Sequence[float] = DEFAULT_CLICK_LEVELS_DB,
   sample_rate: int = constants.DEFAULT_SAMPLE_RATE,
-  duration_s: float = 0.03,
-  pulse_width_s: float = 0.0001,
-  delay_s: float = 0.005,
-  window_s: float = 0.008,
-  mode: str = "baseline_to_peak",
+  duration_s: float = DEFAULT_CLICK_DURATION_S,
+  pulse_width_s: float = DEFAULT_CLICK_PULSE_WIDTH_S,
+  delay_s: float = DEFAULT_CLICK_DELAY_S,
+  window_s: float = DEFAULT_WAVE_I_WINDOW_S,
+  mode: str = DEFAULT_WAVE_I_MODE,
 ) -> dict[str, list[float]]:
   """Runs ABR Wave-I click level series across cohort conditions.
 
   Discards the basilar membrane motion; use `simulate_abr_level_series_with_bm`
   to keep it.
+
+  Args:
+    Identical to `simulate_abr_level_series_with_bm`, which this delegates to.
+
+    cohort: Cohort instance or mapping of conditions. Defaults to standard 5-condition cohort.
+    click_levels_db: Sequence of click sound levels in dB SPL.
+    sample_rate: Sampling rate in Hz.
+    duration_s: Click duration in seconds.
+    pulse_width_s: Click pulse width in seconds.
+    delay_s: Stimulus onset delay in seconds.
+    window_s: Analysis window duration in seconds.
+    mode: Wave-I extraction mode ('baseline_to_peak' or 'peak_to_trough').
 
   Returns:
     Dictionary mapping condition name to list of Wave-I onset amplitudes, in arbitrary units.
