@@ -237,6 +237,20 @@ dataset. Treat it as an exploratory option.
 ```bash
 uv run carfac-ephys-simulate --middle-ear Verhulst_2018 --output-dir output/
 ```
+
+#### Simulating the ABR by Unitary Response Convolution (experimental)
+
+By default Wave-I is measured directly from the summed auditory-nerve population rate.
+`--unitary-response` instead convolves that compound AN activity with a unitary response
+function, following Temboury-Gutierrez, Encina-Llamas and Dau (2024, JASA 155, 1799-1812)
+after Dau (2003), so the output is a simulated far-field potential carrying waves I, III
+and V rather than a bare onset rate:
+
+    AEP(t) = compound_AN(t) * UR(t)
+
+```bash
+uv run carfac-ephys-simulate --unitary-response my_ur.npy --unitary-response-rate 100000
+
 ---
 
 ## 5. Contributing
