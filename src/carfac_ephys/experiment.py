@@ -19,6 +19,9 @@ from carfac_ephys import (
   middle_ear,
   stimuli,
 )
+from carfac_ephys import (
+  unitary_response as unitary_response_module,
+)
 
 
 class AbrLevelSeries(NamedTuple):
@@ -226,6 +229,7 @@ def simulate_abr_level_series_with_bm(
   window_s: float = DEFAULT_WAVE_I_WINDOW_S,
   mode: str = DEFAULT_WAVE_I_MODE,
   middle_ear_filter: middle_ear.MiddleEarFilter | None = None,
+  unitary_response: unitary_response_module.UnitaryResponse | None = None,
 ) -> AbrLevelSeries:
   """Runs ABR Wave-I click level series across cohort conditions.
 
@@ -242,6 +246,11 @@ def simulate_abr_level_series_with_bm(
       reaches the cochlear model, or None to feed the stimulus in unfiltered.
       Defaults to None, which reproduces every published result in this
       repository; the calibration and tolerances were fitted without it.
+    unitary_response: Convolve the compound AN activity with this unitary
+      response before extracting Wave-I, turning the population rate into a
+      simulated far-field potential. None (the default) measures Wave-I from
+      the population rate directly, which is what every published figure and
+      tolerance in this repository was fitted against.
 
 
   Returns:
@@ -288,6 +297,8 @@ def simulate_abr_level_series_with_bm(
         waveform = middle_ear.apply_middle_ear(waveform, middle_ear_filter, sample_rate)
       response = model.run_segment(waveform)
       pop_rate = electrophysiology.compute_population_rate(response.naps)
+      if unitary_response is not None:
+        pop_rate = unitary_response_module.convolve(pop_rate, unitary_response, sample_rate)
       amp = electrophysiology.extract_wave_i_amplitude(
         pop_rate,
         sample_rate=sample_rate,
@@ -322,6 +333,7 @@ def simulate_abr_level_series(
   window_s: float = DEFAULT_WAVE_I_WINDOW_S,
   mode: str = DEFAULT_WAVE_I_MODE,
   middle_ear_filter: middle_ear.MiddleEarFilter | None = None,
+  unitary_response: unitary_response_module.UnitaryResponse | None = None,
 ) -> dict[str, list[float]]:
   """Runs ABR Wave-I click level series across cohort conditions.
 
@@ -343,6 +355,11 @@ def simulate_abr_level_series(
       reaches the cochlear model, or None to feed the stimulus in unfiltered.
       Defaults to None, which reproduces every published result in this
       repository; the calibration and tolerances were fitted without it.
+    unitary_response: Convolve the compound AN activity with this unitary
+      response before extracting Wave-I, turning the population rate into a
+      simulated far-field potential. None (the default) measures Wave-I from
+      the population rate directly, which is what every published figure and
+      tolerance in this repository was fitted against.
 
   Returns:
     Dictionary mapping condition name to list of Wave-I onset amplitudes, in arbitrary units.
@@ -357,6 +374,7 @@ def simulate_abr_level_series(
     window_s=window_s,
     mode=mode,
     middle_ear_filter=middle_ear_filter,
+    unitary_response=unitary_response,
   ).wave1_au
 
 
@@ -372,6 +390,7 @@ def simulate_efr_level_series(
   steady_state_start_s: float = 0.05,
   single_sided: bool = False,
   middle_ear_filter: middle_ear.MiddleEarFilter | None = None,
+  unitary_response: unitary_response_module.UnitaryResponse | None = None,
 ) -> dict[str, list[float]]:
   """Runs EFR SAM tone level series across cohort conditions.
 
@@ -390,7 +409,11 @@ def simulate_efr_level_series(
       reaches the cochlear model, or None to feed the stimulus in unfiltered.
       Defaults to None, which reproduces every published result in this
       repository; the calibration and tolerances were fitted without it.
-
+    unitary_response: Convolve the compound AN activity with this unitary
+      response before extracting Wave-I, turning the population rate into a
+      simulated far-field potential. None (the default) measures Wave-I from
+      the population rate directly, which is what every published figure and
+      tolerance in this repository was fitted against.
 
   Returns:
     Dictionary mapping condition name to list of EFR spectral magnitudes, in arbitrary units.
