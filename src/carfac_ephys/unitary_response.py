@@ -150,3 +150,73 @@ def convolve(
   # kernel and shifts every wave earlier by half its length, which would
   # destroy exactly the latencies the UR exists to carry.
   return np.convolve(rate, kernel)[: rate.size]
+
+
+def derive(
+  measured_potential: np.ndarray,
+  population_rate: np.ndarray,
+  sample_rate: int,
+  source: str,
+  duration_s: float = DEFAULT_DURATION_S,
+  regularisation: float = 1e-3,
+  units: str = "arbitrary",
+) -> UnitaryResponse:
+  """Derives a UR by deconvolving a measured potential with compound AN activity.
+
+  This is the operation described in Temboury-Gutierrez et al. (2024) after
+  Dau (2003): given an averaged ABR recorded to a stimulus, and the compound AN
+  activity this model produces for the same stimulus, the UR is what maps one
+  onto the other.
+
+  Deconvolution is division in the frequency domain and is ill-posed wherever
+  the AN response has little energy, so the division is regularised
+  (Wiener-style): H = conj(R) * P / (|R|^2 + k * max(|R|^2)). Raising
+  `regularisation` gives a smoother, more conservative kernel.
+
+  Args:
+    measured_potential: 1-D recorded potential, time-aligned with the rate.
+    population_rate: 1-D compound AN activity for the same stimulus.
+    sample_rate: Sampling rate of both, in Hz.
+    source: Provenance of the recording. Required: a UR without it is unusable.
+    duration_s: Length to truncate the derived kernel to.
+    regularisation: Wiener constant as a fraction of peak spectral power.
+    units: Units of `measured_potential`, carried onto the UR.
+
+  Returns:
+    The derived UR, truncated to `duration_s`.
+
+  Raises:
+    ValueError: If the inputs are not 1-D, equal length, and finite.
+  """
+  potential = np.asarray(measured_potential, dtype=np.float64)
+  rate = np.asarray(population_rate, dtype=np.float64)
+  if potential.ndim != 1 or rate.ndim != 1:
+    raise ValueError("measured_potential and population_rate must both be 1-D.")
+  if potential.size != rate.size:
+    raise ValueError(
+      f"measured_potential ({potential.size}) and population_rate ({rate.size}) "
+      "must be the same length and time-aligned."
+    )
+  if not np.isfinite(potential).all() or not np.isfinite(rate).all():
+    raise ValueError("inputs contain NaN or Inf values.")
+  if not 0.0 < regularisation < 1.0:
+    raise ValueError(f"regularisation must be in (0, 1), got {regularisation}.")
+
+  n_fft = int(2 ** np.ceil(np.log2(2 * potential.size)))
+  potential_spectrum = np.fft.rfft(potential, n_fft)
+  rate_spectrum = np.fft.rfft(rate, n_fft)
+
+  power = np.abs(rate_spectrum) ** 2
+  peak_power = power.max()
+  if peak_power <= 0.0:
+    raise ValueError("population_rate carries no energy; nothing to deconvolve.")
+
+  transfer = np.conj(rate_spectrum) * potential_spectrum / (power + regularisation * peak_power)
+  kernel = np.fft.irfft(transfer, n_fft)[: int(round(duration_s * sample_rate))]
+
+  return UnitaryResponse(
+    kernel=np.asarray(kernel, dtype=np.float64),
+    sample_rate=sample_rate,
+    source=source,
+    units=units,
+  )

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from carfac_ephys.constants import DEFAULT_SAMPLE_RATE
-from carfac_ephys.unitary_response import UnitaryResponse, convolve, synthetic
+from carfac_ephys.unitary_response import UnitaryResponse, convolve, derive, synthetic
 
 
 def _impulse(n_samples: int, index: int) -> np.ndarray:
@@ -88,3 +88,40 @@ class TestConvolve:
   def test_malformed_rates_are_rejected(self, bad):
     with pytest.raises(ValueError):
       convolve(bad, synthetic(), DEFAULT_SAMPLE_RATE)
+
+
+class TestDerive:
+  def test_round_trip_recovers_a_known_kernel(self):
+    # Make a potential from a kernel we know, then recover the kernel from it.
+    rng = np.random.default_rng(1)
+    rate = np.abs(rng.normal(size=4096))
+    truth = synthetic(duration_s=0.004)
+    potential = convolve(rate, truth, DEFAULT_SAMPLE_RATE)
+
+    recovered = derive(
+      potential,
+      rate,
+      DEFAULT_SAMPLE_RATE,
+      source="round-trip test",
+      duration_s=0.004,
+      regularisation=1e-6,
+    )
+
+    correlation = np.corrcoef(recovered.kernel, truth.kernel)[0, 1]
+    assert correlation > 0.99
+
+  def test_mismatched_lengths_are_rejected(self):
+    with pytest.raises(ValueError, match="same length"):
+      derive(np.zeros(100), np.zeros(99), DEFAULT_SAMPLE_RATE, source="test")
+
+  def test_silent_rate_is_rejected(self):
+    with pytest.raises(ValueError, match="no energy"):
+      derive(np.zeros(256), np.zeros(256), DEFAULT_SAMPLE_RATE, source="test")
+
+  def test_provenance_survives(self):
+    rng = np.random.default_rng(2)
+    rate = np.abs(rng.normal(size=1024))
+    potential = convolve(rate, synthetic(duration_s=0.004), DEFAULT_SAMPLE_RATE)
+    derived = derive(potential, rate, DEFAULT_SAMPLE_RATE, source="Dau et al. 2000 Fig 2")
+
+    assert derived.source == "Dau et al. 2000 Fig 2"
