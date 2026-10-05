@@ -216,6 +216,20 @@ The human groups differ in the origin of the hearing loss, not only its degree:
 cohorts model selective synaptopathy from overexposure, so `nexp` is the comparison they were
 built for and `ma` asks a different question of the same simulation.
 
+#### Middle-Ear Filtering
+
+CARFAC has no middle-ear stage, so by default the stimulus is fed to the cochlear model as-is.
+`--middle-ear` applies a Verhulst band-pass approximation of the human middle-ear transfer
+function first:
+
+*NOTE:* The Middle Ear Filter is off by default. The cohort
+calibration and the tolerances in Section 4 were fitted without it, so enabling the filter
+changes the level reaching the cochlea and invalidates those numbers until they are refitted.
+The filters are also human fits, which makes them a mismatch for the chinchilla reference
+dataset. Treat it as an exploratory option.
+
+```bash
+uv run carfac-ephys-simulate --middle-ear Verhulst_2018 --output-dir output/
 
 #### Fast Smoke Test
 To verify the pipeline on a reduced 2-level subset:

@@ -336,6 +336,19 @@ class TestCli:
     assert "nexp" in result.output
     assert "ma" in result.output
 
+  def test_middle_ear_choice_is_validated(self):
+    result = CliRunner().invoke(main, ["--middle-ear", "Verhulst_1999", "--no-plot"])
+    assert result.exit_code == 2
+    assert "Traceback" not in result.output
+
+  def test_help_lists_the_middle_ear_options(self):
+    result = CliRunner().invoke(main, ["--help"])
+    flat = " ".join(result.output.split()).lower()
+
+    assert "--middle-ear" in flat
+    for name in ("none", "verhulst_2012", "verhulst_2015", "verhulst_2018"):
+      assert name in flat
+
 
 class TestMarkdownTableFormatter:
   """Tests for format_markdown_table."""

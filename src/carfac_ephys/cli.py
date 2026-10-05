@@ -5,6 +5,7 @@ import pathlib
 import click
 
 from carfac_ephys import electrophysiology, empirical, experiment
+from carfac_ephys.middle_ear import FILTERS as _MIDDLE_EAR_FILTERS
 
 
 def _comparison_group_help() -> str:
@@ -50,12 +51,23 @@ def _comparison_group_help() -> str:
   default=False,
   help="Run a fast 2-level sweep instead of the full level series.",
 )
+@click.option(
+  "--middle-ear",
+  type=click.Choice(["none", *sorted(_MIDDLE_EAR_FILTERS)], case_sensitive=False),
+  default="none",
+  show_default=True,
+  help=(
+    "Middle-ear filter applied to each stimulus before the cochlear model. "
+    "'none' reproduces the published results; the calibration was fitted without one."
+  ),
+)
 def main(
   species: str,
   comparison_group: str | None,
   output_dir: pathlib.Path,
   plot: bool,
   quick: bool,
+  middle_ear: str,
 ) -> None:
   """Runs CARFAC cochlear impairment electrophysiology cohort simulations."""
   # Load the dataset once, so every section below reports the same comparison
@@ -69,6 +81,11 @@ def main(
     raise click.BadParameter(str(error), param_hint="--comparison-group") from error
   slug = experiment.dataset_slug(dataset)
   click.echo(f"Dataset: {dataset.species} ({dataset.comparison_group} vs {dataset.baseline_label})")
+
+  # Add the middle ear filter
+  middle_ear_filter = None if middle_ear.lower() == "none" else _MIDDLE_EAR_FILTERS[middle_ear]
+  if middle_ear_filter is not None:
+    click.echo(f"Middle-ear filter: {middle_ear_filter.name}")
 
   # Determine stimulus levels.
   click_levels = [60.0, 80.0] if quick else list(experiment.DEFAULT_CLICK_LEVELS_DB)
