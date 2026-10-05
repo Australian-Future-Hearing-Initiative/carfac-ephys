@@ -280,7 +280,7 @@ class TestElectrophysiologyCarfacIntegration:
     for db in [40.0, 60.0, 80.0]:
       click = generate_click(duration_s=0.02, peak_db_spl=db, delay_s=0.005)
       model.reset()
-      naps = model.run(click)
+      naps = model.run_segment(click).naps
       pop_rate = compute_population_rate(naps)
       amp = extract_wave_i_amplitude(pop_rate, sample_rate=model.fs, stimulus_onset_s=0.005)
       rates.append(amp)
@@ -299,7 +299,7 @@ class TestElectrophysiologyCarfacIntegration:
       duration_s=0.15,
       target_db_spl=70.0,
     )
-    naps = model.run(sam)
+    naps = model.run_segment(sam).naps
     pop_rate = compute_population_rate(naps)
 
     # Check that response at 100 Hz dominates over off-target frequency.
@@ -316,15 +316,15 @@ class TestElectrophysiologyCarfacIntegration:
     # Low-level stimulus: 40 dB SPL.
     click_low = generate_click(duration_s=0.02, peak_db_spl=40.0)
     ctrl_low = extract_wave_i_amplitude(
-      compute_population_rate(ctrl_model.run(click_low)),
+      compute_population_rate(ctrl_model.run_segment(click_low).naps),
       sample_rate=ctrl_model.fs,
     )
     syn_low = extract_wave_i_amplitude(
-      compute_population_rate(syn_model.run(click_low)),
+      compute_population_rate(syn_model.run_segment(click_low).naps),
       sample_rate=syn_model.fs,
     )
     ohc_low = extract_wave_i_amplitude(
-      compute_population_rate(ohc_model.run(click_low)),
+      compute_population_rate(ohc_model.run_segment(click_low).naps),
       sample_rate=ohc_model.fs,
     )
 
@@ -337,11 +337,11 @@ class TestElectrophysiologyCarfacIntegration:
     syn_model.reset()
     click_high = generate_click(duration_s=0.02, peak_db_spl=80.0)
     ctrl_high = extract_wave_i_amplitude(
-      compute_population_rate(ctrl_model.run(click_high)),
+      compute_population_rate(ctrl_model.run_segment(click_high).naps),
       sample_rate=ctrl_model.fs,
     )
     syn_high = extract_wave_i_amplitude(
-      compute_population_rate(syn_model.run(click_high)),
+      compute_population_rate(syn_model.run_segment(click_high).naps),
       sample_rate=syn_model.fs,
     )
 
@@ -357,17 +357,17 @@ class TestElectrophysiologyCarfacIntegration:
     # Low-level SAM tone: 40 dB SPL.
     sam_low = generate_sam_tone(duration_s=0.15, target_db_spl=40.0)
     ctrl_efr_low = extract_efr_amplitude(
-      compute_population_rate(ctrl_model.run(sam_low)),
+      compute_population_rate(ctrl_model.run_segment(sam_low).naps),
       sample_rate=ctrl_model.fs,
       fm_hz=100.0,
     )
     syn_efr_low = extract_efr_amplitude(
-      compute_population_rate(syn_model.run(sam_low)),
+      compute_population_rate(syn_model.run_segment(sam_low).naps),
       sample_rate=syn_model.fs,
       fm_hz=100.0,
     )
     ohc_efr_low = extract_efr_amplitude(
-      compute_population_rate(ohc_model.run(sam_low)),
+      compute_population_rate(ohc_model.run_segment(sam_low).naps),
       sample_rate=ohc_model.fs,
       fm_hz=100.0,
     )
@@ -381,12 +381,12 @@ class TestElectrophysiologyCarfacIntegration:
     syn_model.reset()
     sam_high = generate_sam_tone(duration_s=0.15, target_db_spl=80.0)
     ctrl_efr_high = extract_efr_amplitude(
-      compute_population_rate(ctrl_model.run(sam_high)),
+      compute_population_rate(ctrl_model.run_segment(sam_high).naps),
       sample_rate=ctrl_model.fs,
       fm_hz=100.0,
     )
     syn_efr_high = extract_efr_amplitude(
-      compute_population_rate(syn_model.run(sam_high)),
+      compute_population_rate(syn_model.run_segment(sam_high).naps),
       sample_rate=syn_model.fs,
       fm_hz=100.0,
     )

@@ -189,20 +189,6 @@ class CarfacModel:
       bm=np.asarray(output.bm[:, :, 0], dtype=np.float32),
     )
 
-  def run(self, waveform: np.ndarray) -> np.ndarray:
-    """Runs a stimulus waveform and returns neural activity patterns (NAPs).
-
-    The narrow entry point most callers want. Use `run_segment` when the
-    basilar membrane motion is needed alongside.
-
-    Args:
-      waveform: 1D or 2D single-channel stimulus array.
-
-    Returns:
-      NAPs array of shape (samples, n_channels).
-    """
-    return self.run_segment(waveform).naps
-
 
 def build_model(
   ohc_health: constants.RealScalar | Sequence[constants.RealScalar] | np.ndarray = 1.0,

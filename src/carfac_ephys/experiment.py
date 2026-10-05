@@ -407,7 +407,7 @@ def simulate_efr_level_series(
         target_db_spl=float(level),
         ramp_s=ramp_s,
       )
-      naps = model.run(waveform)
+      naps = model.run_segment(waveform).naps
       pop_rate = electrophysiology.compute_population_rate(naps)
       mag = electrophysiology.extract_efr_amplitude(
         pop_rate,
