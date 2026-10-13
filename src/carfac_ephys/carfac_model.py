@@ -20,7 +20,7 @@ class FiberRetention(NamedTuple):
 
 
 def _broadcast_ohc_health(
-  ohc_health: float | Sequence[float] | np.ndarray,
+  ohc_health: constants.RealScalar | Sequence[constants.RealScalar] | np.ndarray,
   n_channels: int,
 ) -> np.ndarray:
   """Validates and broadcasts OHC health values to a channel array."""
@@ -53,7 +53,10 @@ def _broadcast_ohc_health(
 
 
 def _normalize_fiber_retention(
-  fiber_retention: float | FiberRetention | Sequence[float] | np.ndarray,
+  fiber_retention: constants.RealScalar
+  | FiberRetention
+  | Sequence[constants.RealScalar]
+  | np.ndarray,
 ) -> np.ndarray:
   """Validates and converts fiber retention factors to a length-3 float array."""
   # Reject strings.
@@ -169,8 +172,11 @@ class CarfacModel:
 
 
 def build_model(
-  ohc_health: float | Sequence[float] | np.ndarray = 1.0,
-  fiber_retention: float | FiberRetention | Sequence[float] | np.ndarray = 1.0,
+  ohc_health: constants.RealScalar | Sequence[constants.RealScalar] | np.ndarray = 1.0,
+  fiber_retention: constants.RealScalar
+  | FiberRetention
+  | Sequence[constants.RealScalar]
+  | np.ndarray = 1.0,
   fs: int = constants.DEFAULT_SAMPLE_RATE,
 ) -> CarfacModel:
   """Builds and initializes a CarfacModel with specified biophysical health.

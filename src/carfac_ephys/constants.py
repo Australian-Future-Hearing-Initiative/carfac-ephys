@@ -1,6 +1,11 @@
 """Constants and calibration utilities for CARFAC electrophysiology."""
 
+from typing import overload
+
 import numpy as np
+
+# Callers may pass NumPy scalars (np.float32, np.int64), which a plain `float` annotation rejects.
+RealScalar = float | np.floating | np.integer
 
 # Default acoustic sampling rate in Hz.
 DEFAULT_SAMPLE_RATE: int = 32000
@@ -9,8 +14,12 @@ DEFAULT_SAMPLE_RATE: int = 32000
 DYNAMIC_RANGE_DB: float = 104.0
 
 
+@overload
+def db_spl_to_amplitude(db_spl: RealScalar) -> float: ...
+@overload
+def db_spl_to_amplitude(db_spl: np.ndarray) -> np.ndarray: ...
 def db_spl_to_amplitude(
-  db_spl: float | np.ndarray,
+  db_spl: RealScalar | np.ndarray,
 ) -> float | np.ndarray:
   """Converts sound pressure level in dB SPL to digital linear amplitude.
 
@@ -21,14 +30,23 @@ def db_spl_to_amplitude(
     db_spl: Sound pressure level in dB SPL.
 
   Returns:
-    Digital amplitude (scalar or array).
+    Digital amplitude: a Python float for scalar or 0-d array input, otherwise an array.
   """
   # Compute linear digital amplitude.
-  return 10.0 ** ((db_spl - DYNAMIC_RANGE_DB) / 20.0)
+  amplitude = 10.0 ** ((db_spl - DYNAMIC_RANGE_DB) / 20.0)
+
+  # Return scalar or array matching input type.
+  if np.ndim(db_spl) == 0:
+    return float(amplitude)
+  return amplitude
 
 
+@overload
+def amplitude_to_db_spl(amplitude: RealScalar) -> float: ...
+@overload
+def amplitude_to_db_spl(amplitude: np.ndarray) -> np.ndarray: ...
 def amplitude_to_db_spl(
-  amplitude: float | np.ndarray,
+  amplitude: RealScalar | np.ndarray,
 ) -> float | np.ndarray:
   """Converts digital linear amplitude to sound pressure level in dB SPL.
 
@@ -36,7 +54,8 @@ def amplitude_to_db_spl(
     amplitude: Digital linear amplitude.
 
   Returns:
-    Sound pressure level in dB SPL.
+    Sound pressure level in dB SPL: a Python float for scalar or 0-d array input, otherwise
+    an array.
   """
   # Safe log computation handling non-positive amplitudes.
   amp_arr = np.asarray(amplitude)
