@@ -198,7 +198,7 @@ class TestCarfacModelRun:
   def test_run_click_stimulus(self):
     model = build_model()
     click = generate_click(duration_s=0.01, peak_db_spl=80.0)
-    naps = model.run(click)
+    naps = model.run_segment(click).naps
 
     # Check output shape and absence of NaNs.
     assert naps.shape == (len(click), model.n_channels)
@@ -215,7 +215,7 @@ class TestCarfacModelRun:
       duration_s=0.02,
       target_db_spl=70.0,
     )
-    naps = model.run(sam)
+    naps = model.run_segment(sam).naps
 
     assert naps.shape == (len(sam), model.n_channels)
     assert not np.isnan(naps).any()
@@ -225,13 +225,13 @@ class TestCarfacModelRun:
     model = build_model()
     click = generate_click(duration_s=0.01, delay_s=0.002, peak_db_spl=70.0)
     click_2d = click[:, np.newaxis]
-    naps = model.run(click_2d)
+    naps = model.run_segment(click_2d).naps
     assert naps.shape == (len(click), model.n_channels)
 
   def test_run_zero_sample_waveform(self):
     model = build_model()
     empty = np.zeros(0, dtype=np.float32)
-    naps = model.run(empty)
+    naps = model.run_segment(empty).naps
     assert naps.shape == (0, model.n_channels)
 
   def test_run_invalid_waveform_inputs(self):
@@ -239,37 +239,37 @@ class TestCarfacModelRun:
 
     # Multichannel 2D input.
     with pytest.raises(ValueError):
-      model.run(np.zeros((100, 2), dtype=np.float32))
+      model.run_segment(np.zeros((100, 2), dtype=np.float32))
 
     # 3D input.
     with pytest.raises(ValueError):
-      model.run(np.zeros((100, 1, 1), dtype=np.float32))
+      model.run_segment(np.zeros((100, 1, 1), dtype=np.float32))
 
     # Input containing NaNs.
     nan_wave = np.zeros(100, dtype=np.float32)
     nan_wave[10] = np.nan
     with pytest.raises(ValueError):
-      model.run(nan_wave)
+      model.run_segment(nan_wave).naps
 
     # Input containing Infs.
     inf_wave = np.zeros(100, dtype=np.float32)
     inf_wave[10] = np.inf
     with pytest.raises(ValueError):
-      model.run(inf_wave)
+      model.run_segment(inf_wave).naps
 
   def test_reset_restores_initial_state(self):
     model = build_model()
     click = generate_click(duration_s=0.01, peak_db_spl=80.0)
 
     # Run click twice: state changes from initial.
-    naps1 = model.run(click)
-    naps2 = model.run(click)
+    naps1 = model.run_segment(click).naps
+    naps2 = model.run_segment(click).naps
     # State has progressed so responses differ slightly.
     assert not np.allclose(naps1, naps2)
 
     # Resetting should restore exact state for repeating segment 1.
     model.reset()
-    naps_reset = model.run(click)
+    naps_reset = model.run_segment(click).naps
     assert np.allclose(naps1, naps_reset)
 
 
@@ -281,8 +281,8 @@ class TestBiologicalSignatures:
     impaired_model = build_model(ohc_health=0.2)
 
     stim = generate_click(duration_s=0.015, peak_db_spl=80.0)
-    healthy_naps = healthy_model.run(stim)
-    impaired_naps = impaired_model.run(stim)
+    healthy_naps = healthy_model.run_segment(stim).naps
+    impaired_naps = impaired_model.run_segment(stim).naps
 
     healthy_amp = np.ptp(healthy_naps.mean(axis=1))
     impaired_amp = np.ptp(impaired_naps.mean(axis=1))
@@ -293,8 +293,8 @@ class TestBiologicalSignatures:
     syn_model = build_model(fiber_retention=0.5)
 
     stim = generate_click(duration_s=0.015, peak_db_spl=80.0)
-    healthy_naps = healthy_model.run(stim)
-    syn_naps = syn_model.run(stim)
+    healthy_naps = healthy_model.run_segment(stim).naps
+    syn_naps = syn_model.run_segment(stim).naps
 
     healthy_amp = np.ptp(healthy_naps.mean(axis=1))
     syn_amp = np.ptp(syn_naps.mean(axis=1))
@@ -312,3 +312,22 @@ class TestPackageExports:
     assert hasattr(carfac_ephys, "CarfacModel")
     assert hasattr(carfac_ephys, "FiberRetention")
     assert hasattr(carfac_ephys, "build_model")
+
+  def test_run_segment_returns_naps_and_bm(self):
+    model = build_model()
+    waveform = np.zeros(256, dtype=np.float32)
+    waveform[16] = 0.5
+    response = model.run_segment(waveform)
+
+    assert response.naps.shape == response.bm.shape
+    assert response.naps.shape[1] == model.n_channels
+    assert np.isfinite(response.bm).all()
+    # A click must actually move the membrane.
+    assert np.abs(response.bm).max() > 0.0
+
+  def test_run_segment_zero_sample_waveform(self):
+    model = build_model()
+    response = model.run_segment(np.zeros(0, dtype=np.float32))
+
+    assert response.naps.shape == (0, model.n_channels)
+    assert response.bm.shape == (0, model.n_channels)
