@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from click.testing import CliRunner
 
+from carfac_ephys import experiment
 from carfac_ephys.carfac_model import FiberRetention
 from carfac_ephys.cli import main
 from carfac_ephys.constants import DEFAULT_SAMPLE_RATE
@@ -348,6 +349,30 @@ class TestCli:
     assert "--middle-ear" in flat
     for name in ("none", "verhulst_2012", "verhulst_2015", "verhulst_2018"):
       assert name in flat
+
+  def test_middle_ear_flag_reaches_both_sweeps(self, monkeypatch):
+    # The flag was resolved and echoed but never forwarded, so every run was
+    # unfiltered regardless of the option. Spy on both call sites.
+    seen = {}
+    real_abr = experiment.simulate_abr_level_series
+    real_efr = experiment.simulate_efr_level_series
+
+    def spy_abr(**kwargs):
+      seen["abr"] = kwargs.get("middle_ear_filter")
+      return real_abr(**kwargs)
+
+    def spy_efr(**kwargs):
+      seen["efr"] = kwargs.get("middle_ear_filter")
+      return real_efr(**kwargs)
+
+    monkeypatch.setattr(experiment, "simulate_abr_level_series", spy_abr)
+    monkeypatch.setattr(experiment, "simulate_efr_level_series", spy_efr)
+
+    result = CliRunner().invoke(main, ["--quick", "--no-plot", "--middle-ear", "Verhulst_2018"])
+
+    assert result.exit_code == 0
+    assert seen["abr"] is VERHULST_2018
+    assert seen["efr"] is VERHULST_2018
 
 
 class TestMarkdownTableFormatter:

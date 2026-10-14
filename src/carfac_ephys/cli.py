@@ -93,7 +93,9 @@ def main(
 
   # Run ABR Wave-I level series simulation.
   click.echo("Running ABR Wave-I click level series simulation...")
-  abr_results = experiment.simulate_abr_level_series(click_levels_db=click_levels)
+  abr_results = experiment.simulate_abr_level_series(
+    click_levels_db=click_levels, middle_ear_filter=middle_ear_filter
+  )
   abr_table = experiment.format_ascii_table(
     title=f"ABR Wave-I Onset Amplitude ({electrophysiology.RESPONSE_UNIT}) vs Sound Level",
     levels_db=click_levels,
@@ -103,7 +105,9 @@ def main(
 
   # Run EFR SAM tone level series simulation.
   click.echo("Running EFR SAM tone level series simulation...")
-  efr_results = experiment.simulate_efr_level_series(efr_levels_db=efr_levels)
+  efr_results = experiment.simulate_efr_level_series(
+    efr_levels_db=efr_levels, middle_ear_filter=middle_ear_filter
+  )
   efr_table = experiment.format_ascii_table(
     title=f"EFR Spectral Magnitude at 100 Hz ({electrophysiology.RESPONSE_UNIT}) vs Sound Level",
     levels_db=efr_levels,
