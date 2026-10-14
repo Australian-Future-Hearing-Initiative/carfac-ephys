@@ -5,6 +5,8 @@ import pathlib
 import click
 
 from carfac_ephys import electrophysiology, empirical, experiment
+from carfac_ephys import unitary_response as unitary_response_module
+from carfac_ephys.constants import DEFAULT_SAMPLE_RATE
 from carfac_ephys.middle_ear import FILTERS as _MIDDLE_EAR_FILTERS
 
 
@@ -61,6 +63,23 @@ def _comparison_group_help() -> str:
     "'none' reproduces the published results; the calibration was fitted without one."
   ),
 )
+@click.option(
+  "--unitary-response",
+  type=click.Path(exists=True, dir_okay=False, path_type=pathlib.Path),
+  default=None,
+  help=(
+    "Path to a unitary response kernel (.npy or one-column text). Convolves the "
+    "compound AN activity with it to form a far-field potential. Omit to measure "
+    "Wave-I from the population rate, which is what the published results use."
+  ),
+)
+@click.option(
+  "--unitary-response-rate",
+  type=int,
+  default=DEFAULT_SAMPLE_RATE,
+  show_default=True,
+  help="Sampling rate the UR file is defined at, in Hz. Resampled if it differs.",
+)
 def main(
   species: str,
   comparison_group: str | None,
@@ -68,6 +87,8 @@ def main(
   plot: bool,
   quick: bool,
   middle_ear: str,
+  unitary_response: pathlib.Path | None,
+  unitary_response_rate: int,
 ) -> None:
   """Runs CARFAC cochlear impairment electrophysiology cohort simulations."""
   # Load the dataset once, so every section below reports the same comparison
@@ -114,6 +135,14 @@ def main(
     results=efr_results,
   )
   click.echo("\n" + efr_table + "\n")
+
+  # Unitary response
+  response = None
+  if unitary_response is not None:
+    response = unitary_response_module.load(
+      unitary_response, unitary_response_rate, source=str(unitary_response)
+    )
+    click.echo(f"Unitary response: {response.source} ({response.duration_s * 1000:.1f} ms)")
 
   # Report the fitted conversion from arbitrary units to microvolts.
   click.echo(experiment.format_calibration_line(click_levels, abr_results, dataset=dataset) + "\n")

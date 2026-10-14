@@ -36,6 +36,7 @@ from carfac_ephys.experiment import (
   validate_biological_signatures,
 )
 from carfac_ephys.middle_ear import VERHULST_2018
+from carfac_ephys.unitary_response import synthetic
 
 
 class TestCohortDefinitions:
@@ -909,3 +910,25 @@ class TestMiddleEarFilterOption:
     )
 
     assert filtered["Control"][0] != pytest.approx(unfiltered["Control"][0])
+
+
+class TestUnitaryResponseOption:
+  """Convolving with a UR is opt-in and must not change the default sweep."""
+
+  def test_default_measures_the_population_rate_directly(self):
+    one_cohort = [CohortCondition(name="Control")]
+    plain = simulate_abr_level_series(cohort=one_cohort, click_levels_db=[80.0])
+    explicit_none = simulate_abr_level_series(
+      cohort=one_cohort, click_levels_db=[80.0], unitary_response=None
+    )
+
+    assert plain == explicit_none
+
+  def test_convolution_changes_the_measured_amplitude(self):
+    one_cohort = [CohortCondition(name="Control")]
+    plain = simulate_abr_level_series(cohort=one_cohort, click_levels_db=[80.0])
+    convolved = simulate_abr_level_series(
+      cohort=one_cohort, click_levels_db=[80.0], unitary_response=synthetic()
+    )
+
+    assert convolved["Control"][0] != pytest.approx(plain["Control"][0])
