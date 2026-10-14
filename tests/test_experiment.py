@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from click.testing import CliRunner
 
+from carfac_ephys import experiment
 from carfac_ephys.carfac_model import FiberRetention
 from carfac_ephys.cli import main
 from carfac_ephys.constants import DEFAULT_SAMPLE_RATE
@@ -34,6 +35,7 @@ from carfac_ephys.experiment import (
   simulate_efr_level_series,
   validate_biological_signatures,
 )
+from carfac_ephys.middle_ear import VERHULST_2018
 
 
 class TestCohortDefinitions:
@@ -334,6 +336,43 @@ class TestCli:
     assert "2wk" in result.output
     assert "nexp" in result.output
     assert "ma" in result.output
+
+  def test_middle_ear_choice_is_validated(self):
+    result = CliRunner().invoke(main, ["--middle-ear", "Verhulst_1999", "--no-plot"])
+    assert result.exit_code == 2
+    assert "Traceback" not in result.output
+
+  def test_help_lists_the_middle_ear_options(self):
+    result = CliRunner().invoke(main, ["--help"])
+    flat = " ".join(result.output.split()).lower()
+
+    assert "--middle-ear" in flat
+    for name in ("none", "verhulst_2012", "verhulst_2015", "verhulst_2018"):
+      assert name in flat
+
+  def test_middle_ear_flag_reaches_both_sweeps(self, monkeypatch):
+    # The flag was resolved and echoed but never forwarded, so every run was
+    # unfiltered regardless of the option. Spy on both call sites.
+    seen = {}
+    real_abr = experiment.simulate_abr_level_series
+    real_efr = experiment.simulate_efr_level_series
+
+    def spy_abr(**kwargs):
+      seen["abr"] = kwargs.get("middle_ear_filter")
+      return real_abr(**kwargs)
+
+    def spy_efr(**kwargs):
+      seen["efr"] = kwargs.get("middle_ear_filter")
+      return real_efr(**kwargs)
+
+    monkeypatch.setattr(experiment, "simulate_abr_level_series", spy_abr)
+    monkeypatch.setattr(experiment, "simulate_efr_level_series", spy_efr)
+
+    result = CliRunner().invoke(main, ["--quick", "--no-plot", "--middle-ear", "Verhulst_2018"])
+
+    assert result.exit_code == 0
+    assert seen["abr"] is VERHULST_2018
+    assert seen["efr"] is VERHULST_2018
 
 
 class TestMarkdownTableFormatter:
@@ -845,3 +884,28 @@ class TestSimulateAbrLevelSeriesWithBm:
         assert len(series.pole_freqs) == bm.shape[1]
     # Characteristic frequencies run high to low across the channel array.
     assert series.pole_freqs[0] > series.pole_freqs[-1]
+
+
+class TestMiddleEarFilterOption:
+  """The middle-ear filter is opt-in and must not change the default sweep."""
+
+  def test_default_is_unfiltered(self):
+    # Every pinned value in this repository was fitted without the filter.
+    one_cohort = [CohortCondition(name="Control")]
+    plain = simulate_abr_level_series(cohort=one_cohort, click_levels_db=[80.0])
+    explicit_none = simulate_abr_level_series(
+      cohort=one_cohort, click_levels_db=[80.0], middle_ear_filter=None
+    )
+
+    assert plain == explicit_none
+
+  def test_enabling_the_filter_changes_the_response(self):
+    one_cohort = [CohortCondition(name="Control")]
+    unfiltered = simulate_abr_level_series(cohort=one_cohort, click_levels_db=[80.0])
+    filtered = simulate_abr_level_series(
+      cohort=one_cohort,
+      click_levels_db=[80.0],
+      middle_ear_filter=VERHULST_2018,
+    )
+
+    assert filtered["Control"][0] != pytest.approx(unfiltered["Control"][0])

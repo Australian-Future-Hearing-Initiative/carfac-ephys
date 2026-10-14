@@ -11,7 +11,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from carfac_ephys import carfac_model, constants, electrophysiology, empirical, stimuli
+from carfac_ephys import (
+  carfac_model,
+  constants,
+  electrophysiology,
+  empirical,
+  middle_ear,
+  stimuli,
+)
 
 
 class AbrLevelSeries(NamedTuple):
@@ -218,6 +225,7 @@ def simulate_abr_level_series_with_bm(
   delay_s: float = DEFAULT_CLICK_DELAY_S,
   window_s: float = DEFAULT_WAVE_I_WINDOW_S,
   mode: str = DEFAULT_WAVE_I_MODE,
+  middle_ear_filter: middle_ear.MiddleEarFilter | None = None,
 ) -> AbrLevelSeries:
   """Runs ABR Wave-I click level series across cohort conditions.
 
@@ -230,6 +238,11 @@ def simulate_abr_level_series_with_bm(
     delay_s: Stimulus onset delay in seconds.
     window_s: Analysis window duration in seconds.
     mode: Wave-I extraction mode ('baseline_to_peak' or 'peak_to_trough').
+    middle_ear_filter: Middle-ear filter applied to each stimulus before it
+      reaches the cochlear model, or None to feed the stimulus in unfiltered.
+      Defaults to None, which reproduces every published result in this
+      repository; the calibration and tolerances were fitted without it.
+
 
   Returns:
     AbrLevelSeries carrying Wave-I onset amplitudes in arbitrary units, one per
@@ -271,6 +284,8 @@ def simulate_abr_level_series_with_bm(
         pulse_width_s=pulse_width_s,
         delay_s=delay_s,
       )
+      if middle_ear_filter is not None:
+        waveform = middle_ear.apply_middle_ear(waveform, middle_ear_filter, sample_rate)
       response = model.run_segment(waveform)
       pop_rate = electrophysiology.compute_population_rate(response.naps)
       amp = electrophysiology.extract_wave_i_amplitude(
@@ -306,6 +321,7 @@ def simulate_abr_level_series(
   delay_s: float = DEFAULT_CLICK_DELAY_S,
   window_s: float = DEFAULT_WAVE_I_WINDOW_S,
   mode: str = DEFAULT_WAVE_I_MODE,
+  middle_ear_filter: middle_ear.MiddleEarFilter | None = None,
 ) -> dict[str, list[float]]:
   """Runs ABR Wave-I click level series across cohort conditions.
 
@@ -323,6 +339,10 @@ def simulate_abr_level_series(
     delay_s: Stimulus onset delay in seconds.
     window_s: Analysis window duration in seconds.
     mode: Wave-I extraction mode ('baseline_to_peak' or 'peak_to_trough').
+    middle_ear_filter: Middle-ear filter applied to each stimulus before it
+      reaches the cochlear model, or None to feed the stimulus in unfiltered.
+      Defaults to None, which reproduces every published result in this
+      repository; the calibration and tolerances were fitted without it.
 
   Returns:
     Dictionary mapping condition name to list of Wave-I onset amplitudes, in arbitrary units.
@@ -336,6 +356,7 @@ def simulate_abr_level_series(
     delay_s=delay_s,
     window_s=window_s,
     mode=mode,
+    middle_ear_filter=middle_ear_filter,
   ).wave1_au
 
 
@@ -350,6 +371,7 @@ def simulate_efr_level_series(
   ramp_s: float = 0.01,
   steady_state_start_s: float = 0.05,
   single_sided: bool = False,
+  middle_ear_filter: middle_ear.MiddleEarFilter | None = None,
 ) -> dict[str, list[float]]:
   """Runs EFR SAM tone level series across cohort conditions.
 
@@ -364,6 +386,11 @@ def simulate_efr_level_series(
     ramp_s: Duration of the stimulus onset and offset ramps in seconds.
     steady_state_start_s: Steady-state window start time in seconds.
     single_sided: Whether to return single-sided Fourier magnitude.
+    middle_ear_filter: Middle-ear filter applied to each stimulus before it
+      reaches the cochlear model, or None to feed the stimulus in unfiltered.
+      Defaults to None, which reproduces every published result in this
+      repository; the calibration and tolerances were fitted without it.
+
 
   Returns:
     Dictionary mapping condition name to list of EFR spectral magnitudes, in arbitrary units.
@@ -407,6 +434,8 @@ def simulate_efr_level_series(
         target_db_spl=float(level),
         ramp_s=ramp_s,
       )
+      if middle_ear_filter is not None:
+        waveform = middle_ear.apply_middle_ear(waveform, middle_ear_filter, sample_rate)
       naps = model.run_segment(waveform).naps
       pop_rate = electrophysiology.compute_population_rate(naps)
       mag = electrophysiology.extract_efr_amplitude(
