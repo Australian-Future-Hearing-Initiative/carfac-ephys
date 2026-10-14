@@ -216,6 +216,12 @@ The human groups differ in the origin of the hearing loss, not only its degree:
 cohorts model selective synaptopathy from overexposure, so `nexp` is the comparison they were
 built for and `ma` asks a different question of the same simulation.
 
+#### Fast Smoke Test
+To verify the pipeline on a reduced 2-level subset:
+```bash
+uv run carfac-ephys-simulate --quick --output-dir output/
+```
+
 #### Middle-Ear Filtering
 
 CARFAC has no middle-ear stage, so by default the stimulus is fed to the cochlear model as-is.
@@ -230,13 +236,7 @@ dataset. Treat it as an exploratory option.
 
 ```bash
 uv run carfac-ephys-simulate --middle-ear Verhulst_2018 --output-dir output/
-
-#### Fast Smoke Test
-To verify the pipeline on a reduced 2-level subset:
-```bash
-uv run carfac-ephys-simulate --quick --output-dir output/
 ```
-
 ---
 
 ## 5. Contributing
